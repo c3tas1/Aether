@@ -113,6 +113,7 @@ def get_images_single():
 
         skip = (page - 1) * per_page
         query = {}
+
         if search_text:
             query = {
                 "$or": [
@@ -122,24 +123,21 @@ def get_images_single():
             }
 
         images_cursor = image_collection.find(query).skip(skip).limit(per_page)
-
         response = []
+
         for image in images_cursor:
-            # Convert the Mongo _id to string
             image_id = str(image["_id"])
             image_path = image["path"]
-            # Base64 encode
             with open(image_path, "rb") as f:
                 image_b64_str = base64.b64encode(f.read()).decode("utf-8")
 
-            response.append(
-                {
-                    "id": image_id,
-                    "filename": image["filename"],
-                    "original_name": image.get("original_name", ""),
-                    "base64": image_b64_str,
-                }
-            )
+            response.append({
+                "id": image_id,
+                "filename": image["filename"],
+                "original_name": image.get("original_name", ""),
+                "base64": image_b64_str,
+                "status": image.get("status", ""),  # <-- Include status
+            })
 
         return jsonify(response)
     except Exception as e:
@@ -147,15 +145,18 @@ def get_images_single():
         return jsonify({"error": "Error fetching images"}), 500
 
 
+
 # Example multiple-mode route
 @app.route("/api/images/multiple", methods=["GET"])
 def get_images_multiple():
     try:
-        page = int(request.args.get("page", 1))
-        limit = int(request.args.get("limit", 25))
-        search_text = request.args.get("search", "")
+        page = int(request.args.get("page", 1))       # e.g. ?page=2
+        limit = int(request.args.get("limit", 25))    # e.g. ?limit=50
+        search_text = request.args.get("search", "")  # e.g. ?search=cat
 
         skip = (page - 1) * limit
+
+        # Build query object if search text is provided
         query = {}
         if search_text:
             query = {
@@ -165,28 +166,61 @@ def get_images_multiple():
                 ]
             }
 
+        # If you want to exclude "discarded" images, uncomment below:
+        # query["status"] = {"$ne": "discarded"}
+
+        # Fetch matching documents from Mongo
         images_cursor = image_collection.find(query).skip(skip).limit(limit)
 
         response = []
         for image in images_cursor:
-            image_id = str(image["_id"])
+            image_id = str(image["_id"])  # Convert ObjectId to string
             image_path = image["path"]
+
+            # Base64-encode the image file
             with open(image_path, "rb") as f:
                 image_b64_str = base64.b64encode(f.read()).decode("utf-8")
 
-            response.append(
-                {
-                    "id": image_id,
-                    "filename": image["filename"],
-                    "original_name": image.get("original_name", ""),
-                    "base64": image_b64_str,
-                }
-            )
+            # Include "status" if it exists
+            response.append({
+                "id": image_id,
+                "filename": image["filename"],
+                "original_name": image.get("original_name", ""),
+                "base64": image_b64_str,
+                "status": image.get("status", "")  # Could be "", "discarded", etc.
+            })
 
         return jsonify(response)
+
     except Exception as e:
-        print(f"Error fetching images: {e}")
+        print(f"Error fetching multiple images: {e}")
         return jsonify({"error": "Error fetching images"}), 500
+
+
+@app.route("/api/images/<image_id>/discard", methods=["PUT"])
+def discard_image(image_id):
+    """
+    Mark an image's status as 'discarded' in MongoDB.
+    """
+    try:
+        object_id = ObjectId(image_id)
+        updated_image = image_collection.find_one_and_update(
+            {"_id": object_id},
+            {"$set": {"status": "discarded"}},
+            return_document=True
+        )
+        if not updated_image:
+            return jsonify({"error": "Image not found"}), 404
+
+        return jsonify({
+            "message": "Image discarded",
+            "image_id": str(updated_image['_id']),
+            "status": updated_image.get('status', '')
+        })
+    except Exception as e:
+        print(f"Error discarding image: {e}")
+        return jsonify({"error": "Error discarding image"}), 500
+
 
 
 if __name__ == "__main__":

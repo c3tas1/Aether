@@ -6,28 +6,24 @@ function ImageFilter() {
 
   // =================== SEARCH / DISPLAY STATE ===================
   const [mode, setMode] = useState("single");
-
-  // Search form states
   const [searchQuery, setSearchQuery] = useState("");
   const [feeOption, setFeeOption] = useState("");
 
-  // Images + single-mode index
+  // Each image: { id, filename, dataUrl, status }
   const [images, setImages] = useState([]);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
 
-  // Pagination states (used for multiple mode)
+  // Pagination states (multiple mode)
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
 
-  // =================== UPLOAD HANDLERS ===================
+  // =================== UPLOAD ===================
   const handleFileChange = (e) => {
-    // Allow multiple files, which can include images or a .zip file
     setSelectedFiles([...e.target.files]);
   };
 
   const handleUploadSubmit = async (e) => {
     e.preventDefault();
-
     if (selectedFiles.length === 0) {
       alert("No files selected!");
       return;
@@ -49,7 +45,6 @@ function ImageFilter() {
 
       const result = await res.json();
       console.log("Upload response:", result);
-
       alert("Upload successful!");
       setSelectedFiles([]);
     } catch (err) {
@@ -73,21 +68,19 @@ function ImageFilter() {
         throw new Error(`Network response was not ok: ${res.status}`);
       }
 
-      // Server returns an array of objects: [{ id, filename, original_name, base64 }, ...]
+      // Data is an array of objects: [{ id, filename, base64, status }, ...]
       const data = await res.json();
       console.log("Data from backend:", data);
 
-      // Convert each object's base64 to a data URL: "data:image/jpeg;base64,<base64>"
+      // Convert each to { id, filename, dataUrl, status }
       if (Array.isArray(data)) {
-        const dataUrls = data.map((item) => {
-          return `data:image/jpeg;base64,${item.base64}`;
-        });
-        setImages(dataUrls);
-      } else if (data.images && Array.isArray(data.images)) {
-        const dataUrls = data.images.map(
-          (item) => `data:image/jpeg;base64,${item.base64}`
-        );
-        setImages(dataUrls);
+        const mapped = data.map((item) => ({
+          id: item.id,
+          filename: item.filename,
+          dataUrl: `data:image/jpeg;base64,${item.base64}`,
+          status: item.status || "", // might be "" or "discarded"
+        }));
+        setImages(mapped);
       } else {
         setImages([]);
       }
@@ -98,15 +91,41 @@ function ImageFilter() {
     }
   };
 
-  // =================== SEARCH HANDLER ===================
+  // =================== DISCARD ===================
+  const handleDiscard = async (imageId) => {
+    try {
+      const res = await fetch(
+        `http://127.0.0.1:5000/api/images/${imageId}/discard`,
+        {
+          method: "PUT",
+        }
+      );
+      if (!res.ok) {
+        throw new Error(`Discard failed with status ${res.status}`);
+      }
+      const result = await res.json();
+      console.log("Discard result:", result);
+
+      // Update local state so the button turns green immediately
+      setImages((prev) =>
+        prev.map((img) =>
+          img.id === imageId ? { ...img, status: "discarded" } : img
+        )
+      );
+    } catch (err) {
+      console.error("Error discarding image:", err);
+      alert("Error discarding image. See console for details.");
+    }
+  };
+
+  // =================== SEARCH ===================
   const handleSearchSubmit = (e) => {
     e.preventDefault();
     setPage(1);
     fetchImages();
   };
 
-  // =================== USE EFFECTS (OPTIONAL) ===================
-  // Re-fetch on mode change if we already have a search query
+  // =================== EFFECTS ===================
   useEffect(() => {
     if (searchQuery || feeOption) {
       fetchImages();
@@ -114,7 +133,6 @@ function ImageFilter() {
     // eslint-disable-next-line
   }, [mode]);
 
-  // Re-fetch on page/pageSize change in multiple mode
   useEffect(() => {
     if (mode === "multiple" && (searchQuery || feeOption)) {
       fetchImages();
@@ -122,7 +140,7 @@ function ImageFilter() {
     // eslint-disable-next-line
   }, [page, pageSize]);
 
-  // =================== SINGLE MODE NAVIGATION ===================
+  // =================== SINGLE MODE NAV ===================
   const handlePreviousImage = () => {
     setCurrentImageIndex((prevIndex) =>
       prevIndex === 0 ? images.length - 1 : prevIndex - 1
@@ -135,7 +153,7 @@ function ImageFilter() {
     );
   };
 
-  // =================== MULTIPLE MODE PAGINATION ===================
+  // =================== PAGINATION ===================
   const handlePreviousPage = () => {
     if (page > 1) {
       setPage((prev) => prev - 1);
@@ -156,7 +174,7 @@ function ImageFilter() {
     <div style={{ margin: "20px" }}>
       <h1>Image Viewer + Uploader</h1>
 
-      {/* ========== UPLOAD FORM ========== */}
+      {/* ====== UPLOAD FORM ====== */}
       <h2>Upload Images or ZIP File</h2>
       <form onSubmit={handleUploadSubmit} style={{ marginBottom: "30px" }}>
         <input
@@ -169,7 +187,7 @@ function ImageFilter() {
         <button type="submit">Upload</button>
       </form>
 
-      {/* ========== MODE TOGGLE ========== */}
+      {/* ====== MODE TOGGLE ====== */}
       <div style={{ marginBottom: "20px" }}>
         <button
           onClick={() => setMode("single")}
@@ -185,7 +203,7 @@ function ImageFilter() {
         </button>
       </div>
 
-      {/* ========== SEARCH FORM ========== */}
+      {/* ====== SEARCH FORM ====== */}
       <form onSubmit={handleSearchSubmit} style={{ marginBottom: "20px" }}>
         <label htmlFor="searchQuery">Search:</label>
         <input
@@ -216,43 +234,69 @@ function ImageFilter() {
         </button>
       </form>
 
-      {/* ========== SINGLE MODE ========== */}
-      {mode === "single" && (
+      {/* ====== SINGLE MODE ====== */}
+      {mode === "single" && images.length > 0 && (
         <div>
-          {images.length > 0 ? (
-            <>
-              <div
-                style={{
-                  width: "480px",
-                  height: "270px",
-                  margin: "auto",
-                  border: "1px solid #ccc",
-                  marginBottom: "10px",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
+          <div
+            style={{
+              width: "400px",
+              height: "400px",
+              margin: "auto",
+              border: "1px solid #ccc",
+              marginBottom: "10px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <img
+              src={images[currentImageIndex].dataUrl}
+              alt="Single mode"
+              style={{ maxWidth: "100%", maxHeight: "100%" }}
+            />
+          </div>
+          {/* Show filename */}
+          <div style={{ textAlign: "center", marginBottom: "10px" }}>
+            <strong>{images[currentImageIndex].filename}</strong>
+          </div>
+
+          {/* Discard button => green if discarded, red if not */}
+          <div style={{ textAlign: "center" }}>
+            <button style={{ marginRight: "10px" }} onClick={handlePreviousImage}>
+              Left
+            </button>
+            <button style={{ marginRight: "10px" }} onClick={handleNextImage}>
+              Right
+            </button>
+
+            {images[currentImageIndex].status === "discarded" ? (
+              <button
+                style={{ backgroundColor: "green", color: "white" }}
+                onClick={() =>
+                  handleDiscard(images[currentImageIndex].id)
+                }
               >
-                <img
-                  src={images[currentImageIndex]}
-                  alt="Single mode"
-                  style={{ maxWidth: "100%", maxHeight: "100%" }}
-                />
-              </div>
-              <div style={{ textAlign: "center" }}>
-                <button onClick={handlePreviousImage}>Left</button>
-                <button onClick={handleNextImage} style={{ marginLeft: "10px" }}>
-                  Right
-                </button>
-              </div>
-            </>
-          ) : (
-            <p>No images to display. Try searching or changing fee option.</p>
-          )}
+                Discarded
+              </button>
+            ) : (
+              <button
+                style={{ backgroundColor: "red", color: "white" }}
+                onClick={() =>
+                  handleDiscard(images[currentImageIndex].id)
+                }
+              >
+                Discard
+              </button>
+            )}
+          </div>
         </div>
       )}
 
-      {/* ========== MULTIPLE MODE ========== */}
+      {mode === "single" && images.length === 0 && (
+        <p>No images to display. Try searching or changing fee option.</p>
+      )}
+
+      {/* ====== MULTIPLE MODE ====== */}
       {mode === "multiple" && (
         <div>
           <div style={{ marginBottom: "10px" }}>
@@ -278,26 +322,56 @@ function ImageFilter() {
                 gap: "10px",
               }}
             >
-              {images.map((src, idx) => (
-                <div
-                  key={idx}
-                  style={{
-                    border: "1px solid #ccc",
-                    width: "100%",
-                    height: "120px",
-                    overflow: "hidden",
-                    display: "flex",
-                    justifyContent: "center",
-                    alignItems: "center",
-                  }}
-                >
-                  <img
-                    src={src}
-                    alt={`Grid item ${idx}`}
-                    style={{ maxWidth: "100%", maxHeight: "100%" }}
-                  />
-                </div>
-              ))}
+              {images.map((imgObj) => {
+                const isDiscarded = imgObj.status === "discarded";
+                return (
+                  <div
+                    key={imgObj.id}
+                    style={{
+                      border: "1px solid #ccc",
+                      overflow: "hidden",
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                    }}
+                  >
+                    <div style={{ width: "100%", height: "120px" }}>
+                      <img
+                        src={imgObj.dataUrl}
+                        alt={imgObj.filename}
+                        style={{
+                          maxWidth: "100%",
+                          maxHeight: "100%",
+                          display: "block",
+                          margin: "0 auto",
+                        }}
+                      />
+                    </div>
+                    {/* filename */}
+                    <div
+                      style={{
+                        padding: "5px",
+                        fontSize: "0.9em",
+                        textAlign: "center",
+                      }}
+                    >
+                      {imgObj.filename}
+                    </div>
+
+                    {/* Discard Button => green if discarded, else red */}
+                    <button
+                      style={{
+                        marginBottom: "5px",
+                        backgroundColor: isDiscarded ? "green" : "red",
+                        color: "white",
+                      }}
+                      onClick={() => handleDiscard(imgObj.id)}
+                    >
+                      {isDiscarded ? "Discarded" : "Discard"}
+                    </button>
+                  </div>
+                );
+              })}
             </div>
           ) : (
             <p>No images found. Try adjusting search or fee filter.</p>
