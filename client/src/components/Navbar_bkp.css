@@ -1,0 +1,105 @@
+.navbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem;
+    background-color: #ec3a3a;
+  }
+  
+  .navbar-logo a {
+    text-decoration: none;
+    font-size: 1.5rem;
+    font-weight: bold;
+    color: #333; /* Example logo color */
+  }
+  
+  .navbar-menu {
+    display: flex;
+    gap: 1rem;
+  }
+  
+  .navbar-list {
+    display: flex;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    gap: 1rem;
+  }
+  
+  .navbar-item a {
+    text-decoration: none;
+    color: #555; /* Example link color */
+    padding: 0.5rem, 1rem;
+    border: none;
+    border-radius: 4px;
+    background-color: #eeee;
+    color: #333;
+    cursor: pointer;
+  }
+  
+  .navbar-actions {
+    display: flex;
+    gap: 0.5rem;
+  }
+  .navbar-div {
+    display: flex;
+    align-items: center;
+  } 
+  .navbar-button {
+    padding: 0.5rem 1rem;
+    border: none;
+    border-radius: 4px;
+    background-color: #eee; /* Example button color */
+    color: #333; /* Example button text color */
+    cursor: pointer;
+  }
+  
+  .navbar-button-primary {
+    background-color: #007bff; /* Example primary button color */
+    color: #fff; /* Example primary button text color */
+  }
+  
+  .navbar-toggle {
+    display: none; /* Hide by default on larger screens */
+    border: none;
+    background-color: transparent;
+    font-size: 1.5rem;
+    cursor: pointer;
+  }
+  
+  .navbar-toggle-icon {
+    display: block;
+  }
+  
+  /* Responsive Styles */
+  @media (max-width: 768px) {
+    .navbar-menu {
+      display: flex;
+      flex-direction: column;
+      position: absolute;
+      top: 100%;
+      left: 0;
+      width: 100%;
+      background-color: #fff;
+      padding: 1rem;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+  
+    .navbar-menu.open {
+      display: flex;
+    }
+  
+    .navbar-list {
+      flex-direction: column;
+      align-items: center;
+    }
+  
+    .navbar-actions {
+      flex-direction: column;
+      align-items: center;
+    }
+  
+    .navbar-toggle {
+      display: block;
+    }
+  }
