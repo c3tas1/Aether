@@ -1,18 +1,35 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from pymongo import MongoClient
-from bson.objectid import ObjectId
+import sqlite3
 from PIL import Image
 import os
 import base64
 import datetime
 import zipfile
 
-# Database connection
-client = MongoClient("mongodb://localhost:27017/")
-db = client["Images_DB"]
-image_collection = db["images"]
+# ------------- SQLite Helpers -------------
+DB_PATH = "images.db"
 
+def get_db_connection():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+def initialize_db():
+    with get_db_connection() as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS images (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                filename TEXT NOT NULL,
+                original_name TEXT NOT NULL,
+                path TEXT NOT NULL,
+                status TEXT DEFAULT '',
+                annotations TEXT DEFAULT ''
+            );
+        """)
+        conn.commit()
+
+# ------------- Flask Setup -------------
 app = Flask(__name__)
 CORS(app)
 
@@ -23,7 +40,7 @@ allowed_extensions = {"png", "jpg", "jpeg"}
 def allowed_file(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in allowed_extensions
 
-
+# ------------- /api/upload -------------
 @app.route("/api/upload", methods=["POST"])
 def upload_images():
     """
@@ -65,16 +82,22 @@ def upload_images():
                         new_path = os.path.join(app.config["UPLOAD_FOLDER"], new_filename)
                         os.rename(extracted_path, new_path)
 
-                        # Insert into MongoDB
+                        # Insert into SQLite
+                        with get_db_connection() as conn:
+                            cur = conn.execute("""
+                                INSERT INTO images (filename, original_name, path, status, annotations)
+                                VALUES (?, ?, ?, ?, ?)
+                            """, (new_filename, extracted_filename, new_path, "", ""))
+                            new_id = cur.lastrowid
+
                         image_data = {
+                            "id": new_id,
                             "filename": new_filename,
                             "original_name": extracted_filename,
                             "path": new_path,
-                            "annotations": [],
+                            "status": "",
+                            "annotations": []
                         }
-                        insert_result = image_collection.insert_one(image_data)
-                        # Convert ObjectId to string for JSON serialization
-                        image_data["_id"] = str(insert_result.inserted_id)
                         saved_images.append(image_data)
                     else:
                         # Remove non-allowed files
@@ -87,23 +110,28 @@ def upload_images():
                 image_path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
                 file_obj.save(image_path)
 
+                with get_db_connection() as conn:
+                    cur = conn.execute("""
+                        INSERT INTO images (filename, original_name, path, status, annotations)
+                        VALUES (?, ?, ?, ?, ?)
+                    """, (filename, file_obj.filename, image_path, "", ""))
+                    new_id = cur.lastrowid
+
                 image_data = {
+                    "id": new_id,
                     "filename": filename,
                     "original_name": file_obj.filename,
                     "path": image_path,
-                    "annotations": [],
+                    "status": "",
+                    "annotations": []
                 }
-                insert_result = image_collection.insert_one(image_data)
-                # Convert ObjectId to string
-                image_data["_id"] = str(insert_result.inserted_id)
                 saved_images.append(image_data)
             else:
                 return jsonify({"error": "Unsupported file extension"}), 400
 
     return jsonify({"message": "Upload successful", "data": saved_images})
 
-
-# Example single-mode (search/pagination) route
+# ------------- Single-mode route (/api/images/single) -------------
 @app.route("/api/images/single", methods=["GET"])
 def get_images_single():
     try:
@@ -112,116 +140,156 @@ def get_images_single():
         search_text = request.args.get("search", "")
 
         skip = (page - 1) * per_page
-        query = {}
+
+        # Build SQL query
+        sql_conditions = []
+        params = []
 
         if search_text:
-            query = {
-                "$or": [
-                    {"filename": {"$regex": search_text, "$options": "i"}},
-                    {"original_name": {"$regex": search_text, "$options": "i"}},
-                ]
-            }
+            # e.g. search both filename and original_name using LIKE
+            sql_conditions.append("(filename LIKE ? OR original_name LIKE ?)")
+            like_pattern = f"%{search_text}%"
+            params.append(like_pattern)
+            params.append(like_pattern)
 
-        images_cursor = image_collection.find(query).skip(skip).limit(per_page)
+        # If you want to exclude "discarded", do:  sql_conditions.append("status != 'discarded'")
+
+        where_clause = ""
+        if sql_conditions:
+            where_clause = "WHERE " + " AND ".join(sql_conditions)
+
+        query_sql = f"""
+            SELECT *
+            FROM images
+            {where_clause}
+            LIMIT ? OFFSET ?
+        """
+
+        # Add limit + offset to params
+        params.append(per_page)
+        params.append(skip)
+
         response = []
+        with get_db_connection() as conn:
+            rows = conn.execute(query_sql, tuple(params)).fetchall()
+            for row in rows:
+                image_id = row["id"]
+                image_path = row["path"]
 
-        for image in images_cursor:
-            image_id = str(image["_id"])
-            image_path = image["path"]
-            with open(image_path, "rb") as f:
-                image_b64_str = base64.b64encode(f.read()).decode("utf-8")
+                # Base64 encode
+                with open(image_path, "rb") as f:
+                    image_b64_str = base64.b64encode(f.read()).decode("utf-8")
 
-            response.append({
-                "id": image_id,
-                "filename": image["filename"],
-                "original_name": image.get("original_name", ""),
-                "base64": image_b64_str,
-                "status": image.get("status", ""),  # <-- Include status
-            })
+                response.append({
+                    "id": image_id,
+                    "filename": row["filename"],
+                    "original_name": row["original_name"],
+                    "base64": image_b64_str,
+                    "status": row["status"] or "",
+                })
 
         return jsonify(response)
     except Exception as e:
-        print(f"Error fetching images: {e}")
+        print(f"Error fetching images (single): {e}")
         return jsonify({"error": "Error fetching images"}), 500
 
-
-
-# Example multiple-mode route
+# ------------- Multiple-mode route (/api/images/multiple) -------------
 @app.route("/api/images/multiple", methods=["GET"])
 def get_images_multiple():
     try:
-        page = int(request.args.get("page", 1))       # e.g. ?page=2
-        limit = int(request.args.get("limit", 25))    # e.g. ?limit=50
-        search_text = request.args.get("search", "")  # e.g. ?search=cat
+        page = int(request.args.get("page", 1))
+        limit = int(request.args.get("limit", 25))
+        search_text = request.args.get("search", "")
 
         skip = (page - 1) * limit
 
-        # Build query object if search text is provided
-        query = {}
+        # Build SQL query
+        sql_conditions = []
+        params = []
+
         if search_text:
-            query = {
-                "$or": [
-                    {"filename": {"$regex": search_text, "$options": "i"}},
-                    {"original_name": {"$regex": search_text, "$options": "i"}},
-                ]
-            }
+            sql_conditions.append("(filename LIKE ? OR original_name LIKE ?)")
+            like_pattern = f"%{search_text}%"
+            params.append(like_pattern)
+            params.append(like_pattern)
 
-        # If you want to exclude "discarded" images, uncomment below:
-        # query["status"] = {"$ne": "discarded"}
+        # If you want to exclude "discarded", do:  sql_conditions.append("status != 'discarded'")
 
-        # Fetch matching documents from Mongo
-        images_cursor = image_collection.find(query).skip(skip).limit(limit)
+        where_clause = ""
+        if sql_conditions:
+            where_clause = "WHERE " + " AND ".join(sql_conditions)
+
+        query_sql = f"""
+            SELECT *
+            FROM images
+            {where_clause}
+            LIMIT ? OFFSET ?
+        """
+
+        params.append(limit)
+        params.append(skip)
 
         response = []
-        for image in images_cursor:
-            image_id = str(image["_id"])  # Convert ObjectId to string
-            image_path = image["path"]
+        with get_db_connection() as conn:
+            rows = conn.execute(query_sql, tuple(params)).fetchall()
 
-            # Base64-encode the image file
-            with open(image_path, "rb") as f:
-                image_b64_str = base64.b64encode(f.read()).decode("utf-8")
+            for row in rows:
+                image_id = row["id"]
+                image_path = row["path"]
 
-            # Include "status" if it exists
-            response.append({
-                "id": image_id,
-                "filename": image["filename"],
-                "original_name": image.get("original_name", ""),
-                "base64": image_b64_str,
-                "status": image.get("status", "")  # Could be "", "discarded", etc.
-            })
+                with open(image_path, "rb") as f:
+                    image_b64_str = base64.b64encode(f.read()).decode("utf-8")
+
+                response.append({
+                    "id": image_id,
+                    "filename": row["filename"],
+                    "original_name": row["original_name"],
+                    "base64": image_b64_str,
+                    "status": row["status"] or "",
+                })
 
         return jsonify(response)
-
     except Exception as e:
-        print(f"Error fetching multiple images: {e}")
+        print(f"Error fetching images (multiple): {e}")
         return jsonify({"error": "Error fetching images"}), 500
 
-
-@app.route("/api/images/<image_id>/discard", methods=["PUT"])
+# ------------- Discard route (/api/images/<image_id>/discard) -------------
+@app.route("/api/images/<int:image_id>/discard", methods=["PUT"])
 def discard_image(image_id):
     """
-    Mark an image's status as 'discarded' in MongoDB.
+    Mark an image's status as 'discarded' in SQLite.
     """
     try:
-        object_id = ObjectId(image_id)
-        updated_image = image_collection.find_one_and_update(
-            {"_id": object_id},
-            {"$set": {"status": "discarded"}},
-            return_document=True
-        )
-        if not updated_image:
-            return jsonify({"error": "Image not found"}), 404
+        with get_db_connection() as conn:
+            # Update the row
+            cur = conn.execute("""
+                UPDATE images
+                SET status = 'discarded'
+                WHERE id = ?
+            """, (image_id,))
+            if cur.rowcount == 0:
+                return jsonify({"error": "Image not found"}), 404
 
-        return jsonify({
-            "message": "Image discarded",
-            "image_id": str(updated_image['_id']),
-            "status": updated_image.get('status', '')
-        })
+            # Return the updated row to confirm
+            row = conn.execute("SELECT * FROM images WHERE id = ?", (image_id,)).fetchone()
+            if row:
+                return jsonify({
+                    "message": "Image discarded",
+                    "image_id": row["id"],
+                    "status": row["status"]
+                })
+            else:
+                return jsonify({"error": "Image not found after update"}), 404
+
     except Exception as e:
         print(f"Error discarding image: {e}")
         return jsonify({"error": "Error discarding image"}), 500
 
-
-
+# ------------- Main -------------
 if __name__ == "__main__":
+    # Ensure db is set up
+    if not os.path.exists(DB_PATH):
+        open(DB_PATH, 'a').close()  # create empty file if not present
+    initialize_db()
+
     app.run(debug=True)
