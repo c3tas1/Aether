@@ -285,6 +285,40 @@ def discard_image(image_id):
         print(f"Error discarding image: {e}")
         return jsonify({"error": "Error discarding image"}), 500
 
+
+@app.route("/api/reference_image", methods=["GET"])
+def get_reference_image():
+    """
+    Returns the reference image (Base64) for a given search word, if it exists.
+    E.g. /api/reference_image?search=cat looks for reference_images/cat.jpg
+    """
+    try:
+        search_text = request.args.get("search", "").strip()
+        if not search_text:
+            return jsonify({"error": "No search word"}), 400
+
+        # The reference images folder
+        reference_folder = "reference_images"
+
+        # Construct path like reference_images/<search_text>.jpg
+        ref_filename = f"{search_text}.jpg"
+        ref_path = os.path.join(reference_folder, ref_filename)
+
+        if not os.path.exists(ref_path):
+            # Reference image not found
+            return jsonify({"error": "Reference not available"}), 404
+
+        # Encode and return
+        with open(ref_path, "rb") as f:
+            image_b64_str = base64.b64encode(f.read()).decode("utf-8")
+
+        return jsonify({"base64": image_b64_str})
+
+    except Exception as e:
+        print(f"Error fetching reference image: {e}")
+        return jsonify({"error": "Error fetching reference image"}), 500
+
+
 # ------------- Main -------------
 if __name__ == "__main__":
     # Ensure db is set up

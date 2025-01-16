@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 
-function ImageFilter() {
-  // =================== UPLOAD STATE ===================
+function App() {
+  // =================== UPLOAD STATE (if you still have uploads) ===================
   const [selectedFiles, setSelectedFiles] = useState([]);
 
   // =================== SEARCH / DISPLAY STATE ===================
@@ -9,51 +9,54 @@ function ImageFilter() {
   const [searchQuery, setSearchQuery] = useState("");
   const [feeOption, setFeeOption] = useState("");
 
-  // Each image: { id, filename, dataUrl, status }
+  // Each main image object: { id, filename, dataUrl, status }
   const [images, setImages] = useState([]);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
 
-  // Pagination states (multiple mode)
+  // For reference image
+  const [referenceImage, setReferenceImage] = useState(null); // store dataURL or null
+  const [refImageError, setRefImageError] = useState(false);
+
+  // Pagination (multiple mode)
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
 
-  // =================== UPLOAD ===================
-  const handleFileChange = (e) => {
-    setSelectedFiles([...e.target.files]);
-  };
-
-  const handleUploadSubmit = async (e) => {
-    e.preventDefault();
-    if (selectedFiles.length === 0) {
-      alert("No files selected!");
-      return;
-    }
-
+  // =================== FETCH REFERENCE IMAGE ===================
+  const fetchReferenceImage = async (searchTerm) => {
     try {
-      const formData = new FormData();
-      selectedFiles.forEach((file) => {
-        formData.append("images", file);
-      });
-
-      const res = await fetch("http://127.0.0.1:5000/api/upload", {
-        method: "POST",
-        body: formData,
-      });
-      if (!res.ok) {
-        throw new Error(`Upload failed with status ${res.status}`);
+      if (!searchTerm) {
+        setReferenceImage(null);
+        setRefImageError(true);
+        return;
       }
-
-      const result = await res.json();
-      console.log("Upload response:", result);
-      alert("Upload successful!");
-      setSelectedFiles([]);
+      const refRes = await fetch(
+        `http://127.0.0.1:5000/api/reference_image?search=${encodeURIComponent(
+          searchTerm
+        )}`
+      );
+      if (!refRes.ok) {
+        // probably 404
+        setReferenceImage(null);
+        setRefImageError(true);
+        return;
+      }
+      const refData = await refRes.json();
+      if (refData.base64) {
+        const dataUrl = `data:image/jpeg;base64,${refData.base64}`;
+        setReferenceImage(dataUrl);
+        setRefImageError(false);
+      } else {
+        setReferenceImage(null);
+        setRefImageError(true);
+      }
     } catch (err) {
-      console.error("Error uploading files:", err);
-      alert("Error uploading files. See console for details.");
+      console.error("Error fetching reference image:", err);
+      setReferenceImage(null);
+      setRefImageError(true);
     }
   };
 
-  // =================== FETCH IMAGES ===================
+  // =================== FETCH MAIN IMAGES ===================
   const fetchImages = async () => {
     try {
       let endpoint = "";
@@ -68,17 +71,14 @@ function ImageFilter() {
         throw new Error(`Network response was not ok: ${res.status}`);
       }
 
-      // Data is an array of objects: [{ id, filename, base64, status }, ...]
       const data = await res.json();
-      console.log("Data from backend:", data);
-
-      // Convert each to { id, filename, dataUrl, status }
+      // data is an array of objects: [{ id, filename, base64, status }, ...]
       if (Array.isArray(data)) {
         const mapped = data.map((item) => ({
           id: item.id,
           filename: item.filename,
           dataUrl: `data:image/jpeg;base64,${item.base64}`,
-          status: item.status || "", // might be "" or "discarded"
+          status: item.status || "",
         }));
         setImages(mapped);
       } else {
@@ -91,56 +91,82 @@ function ImageFilter() {
     }
   };
 
-  // =================== DISCARD ===================
-  const handleDiscard = async (imageId) => {
-    try {
-      const res = await fetch(
-        `http://127.0.0.1:5000/api/images/${imageId}/discard`,
-        {
-          method: "PUT",
-        }
-      );
-      if (!res.ok) {
-        throw new Error(`Discard failed with status ${res.status}`);
-      }
-      const result = await res.json();
-      console.log("Discard result:", result);
-
-      // Update local state so the button turns green immediately
-      setImages((prev) =>
-        prev.map((img) =>
-          img.id === imageId ? { ...img, status: "discarded" } : img
-        )
-      );
-    } catch (err) {
-      console.error("Error discarding image:", err);
-      alert("Error discarding image. See console for details.");
-    }
-  };
-
-  // =================== SEARCH ===================
-  const handleSearchSubmit = (e) => {
+  // =================== HANDLE SEARCH ===================
+  const handleSearchSubmit = async (e) => {
     e.preventDefault();
     setPage(1);
+
+    // 1) Fetch reference image for the search term
+    await fetchReferenceImage(searchQuery);
+
+    // 2) Then fetch main images
     fetchImages();
   };
 
-  // =================== EFFECTS ===================
+  // =================== USE EFFECTS ===================
+  // If you change mode, or page/pageSize in multiple mode, we re-fetch images (and keep the same reference)
   useEffect(() => {
-    if (searchQuery || feeOption) {
+    if ((searchQuery || feeOption) && mode === "multiple") {
+      fetchImages();
+    }
+    // eslint-disable-next-line
+  }, [mode, page, pageSize]);
+
+  // If you want immediate fetch on mode switch in single mode too, you could do:
+  useEffect(() => {
+    if ((searchQuery || feeOption) && mode === "single") {
       fetchImages();
     }
     // eslint-disable-next-line
   }, [mode]);
 
-  useEffect(() => {
-    if (mode === "multiple" && (searchQuery || feeOption)) {
-      fetchImages();
+  // =================== RENDERING REFERENCE IMAGE ===================
+  const renderReferenceImage = () => {
+    if (referenceImage) {
+      // We have a dataURL
+      return (
+        <div
+          style={{
+            border: "1px solid #ccc",
+            width: "200px",
+            height: "200px",
+            margin: "auto",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            marginBottom: "10px",
+          }}
+        >
+          <img
+            src={referenceImage}
+            alt="Reference"
+            style={{ maxWidth: "100%", maxHeight: "100%" }}
+          />
+        </div>
+      );
+    } else {
+      // If not found or error
+      return (
+        <div
+          style={{
+            border: "1px solid #ccc",
+            width: "200px",
+            height: "200px",
+            margin: "auto",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            marginBottom: "10px",
+            color: "red",
+          }}
+        >
+          <p>Reference image not available</p>
+        </div>
+      );
     }
-    // eslint-disable-next-line
-  }, [page, pageSize]);
+  };
 
-  // =================== SINGLE MODE NAV ===================
+  // =================== SINGLE MODE NAV (unchanged) ===================
   const handlePreviousImage = () => {
     setCurrentImageIndex((prevIndex) =>
       prevIndex === 0 ? images.length - 1 : prevIndex - 1
@@ -153,7 +179,7 @@ function ImageFilter() {
     );
   };
 
-  // =================== PAGINATION ===================
+  // =================== MULTIPLE MODE PAGINATION ===================
   const handlePreviousPage = () => {
     if (page > 1) {
       setPage((prev) => prev - 1);
@@ -172,38 +198,9 @@ function ImageFilter() {
   // =================== RENDER ===================
   return (
     <div style={{ margin: "20px" }}>
-      <h1>Image Viewer + Uploader</h1>
+      <h1>Image Viewer + Reference Image</h1>
 
-      {/* ====== UPLOAD FORM ====== */}
-      <h2>Upload Images or ZIP File</h2>
-      <form onSubmit={handleUploadSubmit} style={{ marginBottom: "30px" }}>
-        <input
-          type="file"
-          multiple
-          onChange={handleFileChange}
-          accept=".zip,image/*"
-          style={{ marginRight: "10px" }}
-        />
-        <button type="submit">Upload</button>
-      </form>
-
-      {/* ====== MODE TOGGLE ====== */}
-      <div style={{ marginBottom: "20px" }}>
-        <button
-          onClick={() => setMode("single")}
-          style={{ fontWeight: mode === "single" ? "bold" : "normal" }}
-        >
-          Single Mode
-        </button>
-        <button
-          onClick={() => setMode("multiple")}
-          style={{ fontWeight: mode === "multiple" ? "bold" : "normal" }}
-        >
-          Multiple Mode
-        </button>
-      </div>
-
-      {/* ====== SEARCH FORM ====== */}
+      {/* ========== SEARCH FORM ========== */}
       <form onSubmit={handleSearchSubmit} style={{ marginBottom: "20px" }}>
         <label htmlFor="searchQuery">Search:</label>
         <input
@@ -212,10 +209,10 @@ function ImageFilter() {
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder="Type keywords..."
-          style={{ marginLeft: "5px" }}
+          style={{ marginLeft: "5px", marginRight: "10px" }}
         />
 
-        <label htmlFor="feeOption" style={{ marginLeft: "10px" }}>
+        <label htmlFor="feeOption">
           Fee:
         </label>
         <select
@@ -234,71 +231,79 @@ function ImageFilter() {
         </button>
       </form>
 
-      {/* ====== SINGLE MODE ====== */}
-      {mode === "single" && images.length > 0 && (
-        <div>
-          <div
-            style={{
-              width: "400px",
-              height: "400px",
-              margin: "auto",
-              border: "1px solid #ccc",
-              marginBottom: "10px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <img
-              src={images[currentImageIndex].dataUrl}
-              alt="Single mode"
-              style={{ maxWidth: "100%", maxHeight: "100%" }}
-            />
-          </div>
-          {/* Show filename */}
-          <div style={{ textAlign: "center", marginBottom: "10px" }}>
-            <strong>{images[currentImageIndex].filename}</strong>
-          </div>
+      {/* ========== MODE TOGGLE ========== */}
+      <div style={{ marginBottom: "20px" }}>
+        <button
+          onClick={() => setMode("single")}
+          style={{ fontWeight: mode === "single" ? "bold" : "normal" }}
+        >
+          Single Mode
+        </button>
+        <button
+          onClick={() => setMode("multiple")}
+          style={{ fontWeight: mode === "multiple" ? "bold" : "normal" }}
+        >
+          Multiple Mode
+        </button>
+      </div>
 
-          {/* Discard button => green if discarded, red if not */}
-          <div style={{ textAlign: "center" }}>
-            <button style={{ marginRight: "10px" }} onClick={handlePreviousImage}>
-              Left
-            </button>
-            <button style={{ marginRight: "10px" }} onClick={handleNextImage}>
-              Right
-            </button>
-
-            {images[currentImageIndex].status === "discarded" ? (
-              <button
-                style={{ backgroundColor: "green", color: "white" }}
-                onClick={() =>
-                  handleDiscard(images[currentImageIndex].id)
-                }
-              >
-                Discarded
-              </button>
+      {/* ==================== SINGLE MODE ==================== */}
+      {mode === "single" && (
+        <div style={{ display: "flex", gap: "20px", alignItems: "flex-start" }}>
+          {/* Left or main content: single image */}
+          <div>
+            {images.length > 0 ? (
+              <>
+                <div
+                  style={{
+                    width: "400px",
+                    height: "400px",
+                    border: "1px solid #ccc",
+                    marginBottom: "10px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <img
+                    src={images[currentImageIndex].dataUrl}
+                    alt="Single mode"
+                    style={{ maxWidth: "100%", maxHeight: "100%" }}
+                  />
+                </div>
+                <div style={{ textAlign: "center" }}>
+                  <button onClick={handlePreviousImage}>Left</button>
+                  <button
+                    onClick={handleNextImage}
+                    style={{ marginLeft: "10px" }}
+                  >
+                    Right
+                  </button>
+                </div>
+              </>
             ) : (
-              <button
-                style={{ backgroundColor: "red", color: "white" }}
-                onClick={() =>
-                  handleDiscard(images[currentImageIndex].id)
-                }
-              >
-                Discard
-              </button>
+              <p>No images to display. Try searching or changing fee option.</p>
             )}
+          </div>
+
+          {/* Right side: reference image */}
+          <div>
+            <h3>Reference Image</h3>
+            {renderReferenceImage()}
           </div>
         </div>
       )}
 
-      {mode === "single" && images.length === 0 && (
-        <p>No images to display. Try searching or changing fee option.</p>
-      )}
-
-      {/* ====== MULTIPLE MODE ====== */}
+      {/* ==================== MULTIPLE MODE ==================== */}
       {mode === "multiple" && (
         <div>
+          {/* Reference image on top row */}
+          <h3>Reference Image</h3>
+          <div style={{ marginBottom: "20px" }}>
+            {renderReferenceImage()}
+          </div>
+
+          {/* PAGE SIZE SELECTOR */}
           <div style={{ marginBottom: "10px" }}>
             <label htmlFor="pageSize">Images per page:</label>
             <select
@@ -314,6 +319,7 @@ function ImageFilter() {
             </select>
           </div>
 
+          {/* IMAGE GRID */}
           {images.length > 0 ? (
             <div
               style={{
@@ -322,61 +328,32 @@ function ImageFilter() {
                 gap: "10px",
               }}
             >
-              {images.map((imgObj) => {
-                const isDiscarded = imgObj.status === "discarded";
-                return (
-                  <div
-                    key={imgObj.id}
-                    style={{
-                      border: "1px solid #ccc",
-                      overflow: "hidden",
-                      display: "flex",
-                      flexDirection: "column",
-                      alignItems: "center",
-                    }}
-                  >
-                    <div style={{ width: "100%", height: "120px" }}>
-                      <img
-                        src={imgObj.dataUrl}
-                        alt={imgObj.filename}
-                        style={{
-                          maxWidth: "100%",
-                          maxHeight: "100%",
-                          display: "block",
-                          margin: "0 auto",
-                        }}
-                      />
-                    </div>
-                    {/* filename */}
-                    <div
-                      style={{
-                        padding: "5px",
-                        fontSize: "0.9em",
-                        textAlign: "center",
-                      }}
-                    >
-                      {imgObj.filename}
-                    </div>
-
-                    {/* Discard Button => green if discarded, else red */}
-                    <button
-                      style={{
-                        marginBottom: "5px",
-                        backgroundColor: isDiscarded ? "green" : "red",
-                        color: "white",
-                      }}
-                      onClick={() => handleDiscard(imgObj.id)}
-                    >
-                      {isDiscarded ? "Discarded" : "Discard"}
-                    </button>
-                  </div>
-                );
-              })}
+              {images.map((imgObj, idx) => (
+                <div
+                  key={idx}
+                  style={{
+                    border: "1px solid #ccc",
+                    width: "100%",
+                    height: "120px",
+                    overflow: "hidden",
+                    display: "flex",
+                    justifyContent: "center",
+                    alignItems: "center",
+                  }}
+                >
+                  <img
+                    src={imgObj.dataUrl}
+                    alt={`Grid item ${idx}`}
+                    style={{ maxWidth: "100%", maxHeight: "100%" }}
+                  />
+                </div>
+              ))}
             </div>
           ) : (
             <p>No images found. Try adjusting search or fee filter.</p>
           )}
 
+          {/* PAGINATION */}
           <div style={{ marginTop: "20px", textAlign: "center" }}>
             <button onClick={handlePreviousPage} disabled={page === 1}>
               Previous Page
@@ -390,4 +367,4 @@ function ImageFilter() {
   );
 }
 
-export default ImageFilter;
+export default App;
