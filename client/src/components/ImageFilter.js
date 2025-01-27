@@ -1,12 +1,22 @@
 import React, { useState, useEffect, useRef } from "react";
 
-// Define your backend base URL once here:
+/** 
+ * Base URL for your backend.
+ * Change this in one place if your backend host changes.
+ */
 const BASE_URL = "http://127.0.0.1:5000";
 
-// YOLO "logical" sizes
-const SINGLE_LOGICAL_WIDTH = 400;
-const SINGLE_LOGICAL_HEIGHT = 400;
+/**
+ * If your original images are 1200 wide x 1600 tall,
+ * in single mode we set the "logical" coordinate space to (1200,1600).
+ */
+const SINGLE_LOGICAL_WIDTH = 1200;
+const SINGLE_LOGICAL_HEIGHT = 1600;
 
+/**
+ * For multiple mode, we can pick a smaller logical dimension,
+ * e.g. 160×160 or 320×320—whatever you like.
+ */
 const MULTIPLE_LOGICAL_WIDTH = 160;
 const MULTIPLE_LOGICAL_HEIGHT = 160;
 
@@ -17,33 +27,31 @@ const CLASS_NAMES = [
 ];
 
 function ImageFilter() {
-  // Upload
+  // =========== Upload State ===========
   const [selectedFiles, setSelectedFiles] = useState([]);
 
-  // Search & Mode
+  // =========== Search / Mode / Images ===========
   const [searchQuery, setSearchQuery] = useState("");
   const [feeOption, setFeeOption] = useState(""); // "", "Obj Det", etc.
-  const [mode, setMode] = useState("single"); // "single" or "multiple"
-
-  // Images => each { id, filename, dataUrl, status, boxes:[ {classId,x,y,w,h} ] }
-  const [images, setImages] = useState([]);
+  const [mode, setMode] = useState("single");    // "single" or "multiple"
+  const [images, setImages] = useState([]);      // array of images
   const [currentIndex, setCurrentIndex] = useState(0);
 
-  // Pagination (multiple mode)
+  // =========== Pagination for multiple mode ===========
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
 
-  // Annotation states
+  // =========== Annotation State ===========
   const [isDrawing, setIsDrawing] = useState(false);
   const [startPt, setStartPt] = useState(null);
-
-  // The user's chosen class ID (0..15)
   const [currentClassId, setCurrentClassId] = useState(0);
 
-  // Canvas ref (single mode)
+  // A reference to the single-mode canvas
   const singleCanvasRef = useRef(null);
 
-  // ========================== 1) FILE UPLOAD ==========================
+  // ----------------------------------------
+  // 1) FILE UPLOAD
+  // ----------------------------------------
   const handleFileChange = (e) => {
     setSelectedFiles(Array.from(e.target.files));
   };
@@ -59,8 +67,7 @@ function ImageFilter() {
       for (const file of selectedFiles) {
         formData.append("images", file);
       }
-      const uploadUrl = `${BASE_URL}/api/upload`;
-      const res = await fetch(uploadUrl, {
+      const res = await fetch(`${BASE_URL}/api/upload`, {
         method: "POST",
         body: formData,
       });
@@ -77,7 +84,9 @@ function ImageFilter() {
     }
   };
 
-  // ========================== 2) FETCH IMAGES ==========================
+  // ----------------------------------------
+  // 2) FETCH IMAGES
+  // ----------------------------------------
   const fetchImages = async () => {
     try {
       let endpoint = "";
@@ -108,7 +117,7 @@ function ImageFilter() {
     }
   };
 
-  // Re-fetch if certain states change
+  // Re-fetch if search/fee changes, or page/pageSize, or mode
   useEffect(() => {
     if (searchQuery || feeOption) {
       fetchImages();
@@ -116,7 +125,9 @@ function ImageFilter() {
     // eslint-disable-next-line
   }, [mode, page, pageSize, feeOption]);
 
-  // ========================== 3) SINGLE MODE ANNOTATION ==========================
+  // ----------------------------------------
+  // 3) SINGLE MODE ANNOTATION
+  // ----------------------------------------
   useEffect(() => {
     if (mode === "single") {
       drawSingleBoxes();
@@ -129,7 +140,7 @@ function ImageFilter() {
     const canvas = singleCanvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.clearRect(0, 0, SINGLE_LOGICAL_WIDTH, SINGLE_LOGICAL_HEIGHT);
 
     if (images.length === 0) return;
     const img = images[currentIndex];
@@ -140,40 +151,42 @@ function ImageFilter() {
       // label
       const label = CLASS_NAMES[box.classId] || `id=${box.classId}`;
       ctx.fillStyle = "lime";
-      ctx.font = "14px Arial";
-      ctx.fillText(label, box.x + 2, box.y + 14);
+      ctx.font = "18px Arial";
+      ctx.fillText(label, box.x + 2, box.y + 18);
     });
   };
 
-  // **SCALED MOUSE** => LOGICAL COORDS
-  const scaleMouseSingle = (e) => {
+  /**
+   * SCALING FIX: We must apply a scale factor if the canvas is visually smaller or bigger 
+   * than the logical 1200×1600. 
+   * We'll do:
+   *    scaleX = SINGLE_LOGICAL_WIDTH / rect.width
+   *    scaleY = SINGLE_LOGICAL_HEIGHT / rect.height
+   * Then multiply the mouse offsets by that scale.
+   */
+  const handleSingleMouseDown = (e) => {
+    setIsDrawing(true);
     const rect = e.currentTarget.getBoundingClientRect();
-    // e.clientX - rect.left => physical px in the scaled canvas
-    // We want logical coords in [0..400].
-    const mouseX = e.clientX - rect.left;
-    const mouseY = e.clientY - rect.top;
-
     const scaleX = SINGLE_LOGICAL_WIDTH / rect.width;
     const scaleY = SINGLE_LOGICAL_HEIGHT / rect.height;
 
-    const logicX = mouseX * scaleX;
-    const logicY = mouseY * scaleY;
-    return { x: logicX, y: logicY };
-  };
-
-  const handleSingleMouseDown = (e) => {
-    setIsDrawing(true);
-    const { x, y } = scaleMouseSingle(e);
-    setStartPt({ x, y });
+    const sx = (e.clientX - rect.left) * scaleX;
+    const sy = (e.clientY - rect.top) * scaleY;
+    setStartPt({ x: sx, y: sy });
   };
 
   const handleSingleMouseMove = (e) => {
     if (!isDrawing) return;
-    // re-draw existing
+    // Re-draw existing
     drawSingleBoxes();
-    const { x: mx, y: my } = scaleMouseSingle(e);
 
-    // draw a temp rectangle from startPt to (mx,my)
+    const rect = e.currentTarget.getBoundingClientRect();
+    const scaleX = SINGLE_LOGICAL_WIDTH / rect.width;
+    const scaleY = SINGLE_LOGICAL_HEIGHT / rect.height;
+
+    const mx = (e.clientX - rect.left) * scaleX;
+    const my = (e.clientY - rect.top) * scaleY;
+
     const canvas = singleCanvasRef.current;
     const ctx = canvas.getContext("2d");
     ctx.strokeStyle = "yellow";
@@ -184,12 +197,16 @@ function ImageFilter() {
   const handleSingleMouseUp = (e) => {
     if (!isDrawing) return;
     setIsDrawing(false);
-    const { x: mx, y: my } = scaleMouseSingle(e);
 
+    const rect = e.currentTarget.getBoundingClientRect();
+    const scaleX = SINGLE_LOGICAL_WIDTH / rect.width;
+    const scaleY = SINGLE_LOGICAL_HEIGHT / rect.height;
+
+    const mx = (e.clientX - rect.left) * scaleX;
+    const my = (e.clientY - rect.top) * scaleY;
     const w = mx - startPt.x;
     const h = my - startPt.y;
 
-    if (images.length === 0) return;
     const newBox = {
       classId: currentClassId,
       x: startPt.x,
@@ -209,8 +226,8 @@ function ImageFilter() {
     try {
       const body = {
         boxes: img.boxes,
-        imageWidth: SINGLE_LOGICAL_WIDTH, // 400
-        imageHeight: SINGLE_LOGICAL_HEIGHT, // 400
+        imageWidth: SINGLE_LOGICAL_WIDTH,
+        imageHeight: SINGLE_LOGICAL_HEIGHT,
       };
       const annUrl = `${BASE_URL}/api/annotations/${img.filename}`;
       const res = await fetch(annUrl, {
@@ -233,10 +250,14 @@ function ImageFilter() {
     setCurrentIndex((i) => (i === images.length - 1 ? 0 : i + 1));
   };
 
-  // ========================== 4) MULTIPLE MODE THUMBNAILS ==========================
-  // We'll use a subcomponent for each thumbnail
+  // ----------------------------------------
+  // 4) MULTIPLE MODE THUMBNAILS
+  // ----------------------------------------
+  // We'll define a subcomponent <MultipleThumb> below.
 
-  // ========================== 5) Discard ==========================
+  // ----------------------------------------
+  // 5) Discard
+  // ----------------------------------------
   const handleDiscard = async (img) => {
     try {
       const discardUrl = `${BASE_URL}/api/images/${img.id}/discard`;
@@ -255,18 +276,23 @@ function ImageFilter() {
     }
   };
 
-  // ========================== 6) Searching Form ==========================
+  // ----------------------------------------
+  // 6) Searching Form
+  // ----------------------------------------
   const handleSearchSubmit = (e) => {
     e.preventDefault();
     setPage(1);
     fetchImages();
   };
 
+  // ----------------------------------------
+  // RENDER
+  // ----------------------------------------
   return (
     <div style={{ margin: "20px" }}>
-      <h1>React YOLOv7 Annotation with Scaled Canvas (Final)</h1>
+      <h1>Annotation with Scale Factor (1200x1600 for Single Mode)</h1>
 
-      {/* ========== Upload Form ========== */}
+      {/* ---------- Upload Form ---------- */}
       <h2>Upload Images or ZIP</h2>
       <form onSubmit={handleUploadSubmit} style={{ marginBottom: "20px" }}>
         <input
@@ -279,7 +305,7 @@ function ImageFilter() {
         <button type="submit">Upload</button>
       </form>
 
-      {/* ========== Search Form ========== */}
+      {/* ---------- Search Form ---------- */}
       <form onSubmit={handleSearchSubmit} style={{ marginBottom: "10px" }}>
         <label>Search:</label>
         <input
@@ -301,7 +327,7 @@ function ImageFilter() {
         </button>
       </form>
 
-      {/* ========== Mode Toggle ========== */}
+      {/* ---------- Mode Toggle ---------- */}
       <div style={{ marginBottom: "10px" }}>
         <button
           onClick={() => setMode("single")}
@@ -320,7 +346,7 @@ function ImageFilter() {
         </button>
       </div>
 
-      {/* ========== Class Selector ========== */}
+      {/* ---------- Class Selector ---------- */}
       <div style={{ marginBottom: "10px" }}>
         <label>Class: </label>
         <select
@@ -335,25 +361,26 @@ function ImageFilter() {
         </select>
       </div>
 
-      {/* ========== SINGLE MODE ========== */}
+      {/* ---------- SINGLE MODE ---------- */}
       {mode === "single" && images.length > 0 && (
         <div
           style={{
-            // Center the single-mode container
+            // Center the single-mode container + buttons
             display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
             flexDirection: "column",
+            alignItems: "center",
           }}
         >
           <div
             style={{
               position: "relative",
-              width: "25%", // approximate 1/4 scale
+              // We can fix a max width so it's not too large 
+              maxWidth: "600px",
+              width: "100%", // or set "width: '50%'" if you want half-scale
               margin: "auto",
             }}
           >
-            {/* The image scaled to 25% width */}
+            {/* The image displayed with any scale you like */}
             <img
               src={images[currentIndex].dataUrl}
               alt=""
@@ -363,7 +390,7 @@ function ImageFilter() {
                 height: "auto",
               }}
             />
-            {/* Canvas with 400x400 coordinate space, but visually scaled to 25% */}
+            {/* Canvas with a "logical" 1200x1600 coordinate space */}
             <canvas
               ref={singleCanvasRef}
               width={SINGLE_LOGICAL_WIDTH}
@@ -372,15 +399,18 @@ function ImageFilter() {
                 position: "absolute",
                 top: 0,
                 left: 0,
-                width: "100%", // match the scaled image
+                width: "100%",  // matches the scaled image
                 height: "auto",
                 cursor: "crosshair",
+                zIndex: 1,     // ensure above the image, but below the buttons outside
               }}
               onMouseDown={handleSingleMouseDown}
               onMouseMove={handleSingleMouseMove}
               onMouseUp={handleSingleMouseUp}
             />
           </div>
+
+          {/* Buttons outside the container, so the canvas won't overlap them */}
           <div style={{ marginTop: "10px" }}>
             <button onClick={saveSingleAnnotations}>Save Annotations</button>{" "}
             <button onClick={() => handleDiscard(images[currentIndex])}>
@@ -395,7 +425,7 @@ function ImageFilter() {
         <p>No images found for single mode.</p>
       )}
 
-      {/* ========== MULTIPLE MODE ========== */}
+      {/* ---------- MULTIPLE MODE ---------- */}
       {mode === "multiple" && (
         <div>
           <div style={{ marginBottom: "10px" }}>
@@ -420,7 +450,7 @@ function ImageFilter() {
                 display: "grid",
                 gridTemplateColumns: "repeat(3, 1fr)", // 3 images per row
                 gap: "10px",
-                justifyItems: "center", // center each grid cell
+                justifyItems: "center",
                 alignItems: "start",
               }}
             >
@@ -457,7 +487,10 @@ function ImageFilter() {
   );
 }
 
-// Subcomponent for multiple-mode items
+/**
+ * A subcomponent for multiple mode thumbnails.
+ * We choose a "logical" dimension of 160×160 for YOLO coords.
+ */
 function MultipleThumb({ image, classId, onDiscard, onUpdateImage }) {
   const canvasRef = useRef(null);
   const [isDrawing, setIsDrawing] = useState(false);
@@ -471,7 +504,6 @@ function MultipleThumb({ image, classId, onDiscard, onUpdateImage }) {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
-    // Clear
     ctx.clearRect(0, 0, MULTIPLE_LOGICAL_WIDTH, MULTIPLE_LOGICAL_HEIGHT);
     ctx.strokeStyle = "lime";
     ctx.lineWidth = 2;
@@ -485,33 +517,33 @@ function MultipleThumb({ image, classId, onDiscard, onUpdateImage }) {
     });
   };
 
-  // Scale from physical px => 160x160 logical
-  const scaleMouseMultiple = (e) => {
+  /**
+   * SCALING FIX for multiple mode:
+   * We have a 160×160 logic space, but the thumbnail might be bigger or smaller in CSS.
+   */
+  const handleMouseDown = (e) => {
+    setIsDrawing(true);
     const rect = e.currentTarget.getBoundingClientRect();
-    const mouseX = e.clientX - rect.left;
-    const mouseY = e.clientY - rect.top;
-
     const scaleX = MULTIPLE_LOGICAL_WIDTH / rect.width;
     const scaleY = MULTIPLE_LOGICAL_HEIGHT / rect.height;
 
-    const logicX = mouseX * scaleX;
-    const logicY = mouseY * scaleY;
-    return { x: logicX, y: logicY };
-  };
-
-  const handleMouseDown = (e) => {
-    setIsDrawing(true);
-    const { x, y } = scaleMouseMultiple(e);
-    setStartPt({ x, y });
+    const sx = (e.clientX - rect.left) * scaleX;
+    const sy = (e.clientY - rect.top) * scaleY;
+    setStartPt({ x: sx, y: sy });
   };
 
   const handleMouseMove = (e) => {
     if (!isDrawing) return;
     drawBoxes();
-    const { x: mx, y: my } = scaleMouseMultiple(e);
 
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext("2d");
+    const rect = e.currentTarget.getBoundingClientRect();
+    const scaleX = MULTIPLE_LOGICAL_WIDTH / rect.width;
+    const scaleY = MULTIPLE_LOGICAL_HEIGHT / rect.height;
+
+    const mx = (e.clientX - rect.left) * scaleX;
+    const my = (e.clientY - rect.top) * scaleY;
+
+    const ctx = canvasRef.current.getContext("2d");
     ctx.strokeStyle = "yellow";
     ctx.lineWidth = 2;
     ctx.strokeRect(startPt.x, startPt.y, mx - startPt.x, my - startPt.y);
@@ -521,7 +553,12 @@ function MultipleThumb({ image, classId, onDiscard, onUpdateImage }) {
     if (!isDrawing) return;
     setIsDrawing(false);
 
-    const { x: mx, y: my } = scaleMouseMultiple(e);
+    const rect = e.currentTarget.getBoundingClientRect();
+    const scaleX = MULTIPLE_LOGICAL_WIDTH / rect.width;
+    const scaleY = MULTIPLE_LOGICAL_HEIGHT / rect.height;
+
+    const mx = (e.clientX - rect.left) * scaleX;
+    const my = (e.clientY - rect.top) * scaleY;
     const w = mx - startPt.x;
     const h = my - startPt.y;
 
@@ -541,8 +578,8 @@ function MultipleThumb({ image, classId, onDiscard, onUpdateImage }) {
     try {
       const body = {
         boxes: image.boxes,
-        imageWidth: MULTIPLE_LOGICAL_WIDTH, // 160
-        imageHeight: MULTIPLE_LOGICAL_HEIGHT, // 160
+        imageWidth: MULTIPLE_LOGICAL_WIDTH,
+        imageHeight: MULTIPLE_LOGICAL_HEIGHT,
       };
       const annUrl = `${BASE_URL}/api/annotations/${image.filename}`;
       const res = await fetch(annUrl, {
@@ -562,13 +599,12 @@ function MultipleThumb({ image, classId, onDiscard, onUpdateImage }) {
     <div
       style={{
         position: "relative",
-        // Let each item be at most 400px wide so images are bigger
-        width: "100%",
-        maxWidth: "400px",
+        width: "100%", // fill the grid cell
+        maxWidth: "400px", // bigger thumbnails
       }}
     >
       <div style={{ position: "relative", width: "100%", margin: "auto" }}>
-        {/* The image scaled to fill container, up to 400px */}
+        {/* The image, fill container up to 400px */}
         <img
           src={image.dataUrl}
           alt={image.filename}
@@ -579,7 +615,7 @@ function MultipleThumb({ image, classId, onDiscard, onUpdateImage }) {
             objectFit: "cover",
           }}
         />
-        {/* A 160x160 "logical" system, scaled to fill the container */}
+        {/* Canvas has 160×160 "logical" coords, scaled to fill the same space */}
         <canvas
           ref={canvasRef}
           width={MULTIPLE_LOGICAL_WIDTH}
@@ -597,7 +633,7 @@ function MultipleThumb({ image, classId, onDiscard, onUpdateImage }) {
           onMouseUp={handleMouseUp}
         />
       </div>
-      {/* Save + Discard */}
+      {/* Buttons */}
       <div style={{ marginTop: "5px", textAlign: "center" }}>
         <button onClick={handleSave} style={{ fontSize: "12px", marginRight: "5px" }}>
           Save
