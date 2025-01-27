@@ -1,5 +1,8 @@
 import React, { useState, useEffect, useRef } from "react";
 
+// Define your backend base URL once here:
+const BASE_URL = "http://127.0.0.1:5000";
+
 // 16 class names
 const CLASS_NAMES = [
   "person", "car", "dog", "cat", "bottle", "chair", "tv", "phone",
@@ -50,7 +53,8 @@ function ImageFilter() {
       for (const file of selectedFiles) {
         formData.append("images", file);
       }
-      const res = await fetch("http://127.0.0.1:5000/api/upload", {
+      const uploadUrl = `${BASE_URL}/api/upload`;  // Use BASE_URL
+      const res = await fetch(uploadUrl, {
         method: "POST",
         body: formData,
       });
@@ -72,9 +76,9 @@ function ImageFilter() {
     try {
       let endpoint = "";
       if (mode === "single") {
-        endpoint = `http://127.0.0.1:5000/api/images/single?search=${searchQuery}&fee=${feeOption}&page=${page}&per_page=${pageSize}`;
+        endpoint = `${BASE_URL}/api/images/single?search=${searchQuery}&fee=${feeOption}&page=${page}&per_page=${pageSize}`;
       } else {
-        endpoint = `http://127.0.0.1:5000/api/images/multiple?search=${searchQuery}&fee=${feeOption}&page=${page}&limit=${pageSize}`;
+        endpoint = `${BASE_URL}/api/images/multiple?search=${searchQuery}&fee=${feeOption}&page=${page}&limit=${pageSize}`;
       }
       const res = await fetch(endpoint);
       if (!res.ok) {
@@ -183,7 +187,8 @@ function ImageFilter() {
         imageWidth: 400, // single mode
         imageHeight: 400
       };
-      const res = await fetch(`http://127.0.0.1:5000/api/annotations/${img.filename}`, {
+      const annUrl = `${BASE_URL}/api/annotations/${img.filename}`;
+      const res = await fetch(annUrl, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body)
@@ -209,7 +214,8 @@ function ImageFilter() {
   // =================== 5) Discard ===================
   const handleDiscard = async (img) => {
     try {
-      const res = await fetch(`http://127.0.0.1:5000/api/images/${img.id}/discard`, {
+      const discardUrl = `${BASE_URL}/api/images/${img.id}/discard`;
+      const res = await fetch(discardUrl, {
         method: "PUT"
       });
       if (!res.ok) throw new Error("Discard error " + res.status);
@@ -231,7 +237,7 @@ function ImageFilter() {
 
   return (
     <div style={{ margin: "20px" }}>
-      <h1>React YOLOv7 Annotation (Scaled Images)</h1>
+      <h1>React YOLOv7 Annotation (with Base URL variable)</h1>
 
       {/* ========== Upload Form ========== */}
       <h2>Upload Images or ZIP</h2>
@@ -303,7 +309,7 @@ function ImageFilter() {
       {mode === "single" && images.length > 0 && (
         <div
           style={{
-            // Center the single-mode image/canvas container
+            // Center the single-mode container
             display: "flex",
             justifyContent: "center",
             alignItems: "center",
@@ -313,24 +319,21 @@ function ImageFilter() {
           <div
             style={{
               position: "relative",
-              // We'll fix a container that is 25% scale from a typical 1600x1200
-              // or you can just fix a width. 
               width: "25%", // approximate 1/4 scale
               margin: "auto",
             }}
           >
-            {/* The image scaled to 25% width and auto height */}
+            {/* The image scaled to 25% width */}
             <img
               src={images[currentIndex].dataUrl}
               alt=""
               style={{
                 display: "block",
-                width: "100%", // fill the container's 25%
+                width: "100%",
                 height: "auto",
               }}
             />
-            {/* The canvas absolutely placed on top, same 25% container */}
-            {/* We'll keep a "virtual" 400x400 coordinate system for annotation. */}
+            {/* Canvas with 400x400 coordinate space, but visually scaled to 25% */}
             <canvas
               ref={singleCanvasRef}
               width={400}
@@ -339,8 +342,8 @@ function ImageFilter() {
                 position: "absolute",
                 top: 0,
                 left: 0,
-                width: "100%", // match the image's scale
-                height: "auto", 
+                width: "100%", // match the scaled image
+                height: "auto",
                 cursor: "crosshair",
               }}
               onMouseDown={handleSingleMouseDown}
@@ -387,7 +390,7 @@ function ImageFilter() {
                 display: "grid",
                 gridTemplateColumns: "repeat(3, 1fr)", // 3 images per row
                 gap: "10px",
-                justifyItems: "center", // center each grid item
+                justifyItems: "center", // center each grid cell
                 alignItems: "start",
               }}
             >
@@ -396,6 +399,7 @@ function ImageFilter() {
                   key={img.id}
                   image={img}
                   classId={currentClassId}
+                  baseUrl={BASE_URL} // pass the baseUrl to subcomponent if needed
                   onDiscard={() => handleDiscard(img)}
                   onUpdateImage={(updated) => {
                     setImages((prev) => {
@@ -424,8 +428,7 @@ function ImageFilter() {
   );
 }
 
-// A subcomponent for multiple mode item, each scaled to about 25% => we can fix container to 25% as well.
-function MultipleThumb({ image, classId, onDiscard, onUpdateImage }) {
+function MultipleThumb({ image, classId, onDiscard, onUpdateImage, baseUrl }) {
   const canvasRef = useRef(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [startPt, setStartPt] = useState(null);
@@ -491,7 +494,6 @@ function MultipleThumb({ image, classId, onDiscard, onUpdateImage }) {
     setStartPt(null);
   };
 
-  // Save YOLO
   const handleSave = async () => {
     try {
       const body = {
@@ -499,7 +501,9 @@ function MultipleThumb({ image, classId, onDiscard, onUpdateImage }) {
         imageWidth: 160, // multiple mode
         imageHeight: 160,
       };
-      const res = await fetch(`http://127.0.0.1:5000/api/annotations/${image.filename}`, {
+      // We can read from baseUrl if needed, or do a direct reference again:
+      const annUrl = `${BASE_URL}/api/annotations/${image.filename}`;
+      const res = await fetch(annUrl, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -517,13 +521,11 @@ function MultipleThumb({ image, classId, onDiscard, onUpdateImage }) {
       style={{
         // We'll fix a container for each thumbnail at ~25% scale
         position: "relative",
-        width: "25%", // each item is about 25% of the row. 
-        // But note we also use grid columns: repeat(3,1fr). 
-        // Combining them might require adjusting to your preference.
+        width: "25%", // each item ~ 25% wide. Our grid has 3 items per row.
       }}
     >
       <div style={{ position: "relative", width: "100%", margin: "auto" }}>
-        {/* The image scaled to 25% in multiple mode */}
+        {/* The image scaled to ~25% in multiple mode */}
         <img
           src={image.dataUrl}
           alt={image.filename}
