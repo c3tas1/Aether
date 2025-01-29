@@ -13,8 +13,6 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ANNOTATIONS_DIR = os.path.join(BASE_DIR, "annotations")
 os.makedirs(ANNOTATIONS_DIR, exist_ok=True)
 
-
-
 def get_db_connection():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
@@ -42,83 +40,100 @@ UPLOAD_FOLDER = "uploads/"
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 allowed_extensions = {"png", "jpg", "jpeg"}
 
-
-
 def allowed_file(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in allowed_extensions
-
-
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ANNOTATIONS_DIR = os.path.join(BASE_DIR, "annotations")
 os.makedirs(ANNOTATIONS_DIR, exist_ok=True)
 
-
-# ------------- /api/images/<image_id>/annotations-------------
-@app.route("/api/images/<int:image_id>/annotations", methods=["GET"])
-def get_annotations(image_id):
+# ------------------------------------------------------------------------------
+#  /api/images/<int:image_id>/annotations  (GET + POST)
+# ------------------------------------------------------------------------------
+@app.route("/api/images/<int:image_id>/annotations", methods=["GET", "POST"])
+def handle_annotations(image_id):
     """
-    Returns JSON array of YOLO lines, e.g.:
-      [
-        {"classId": 0, "x_center": 0.5, "y_center": 0.4, "w": 0.1, "h": 0.2},
-        ...
-      ]
-    plus an optional "labelMap" if you store classId->label.
+    GET => read YOLO annotation lines from `annotations/<base_name>.txt`,
+           where <base_name> = images.filename (without extension).
+    POST => parse JSON { boxes: [...] }, then write lines to the same `.txt`.
     """
-    import os
-    from flask import jsonify
+    # 1) Lookup the actual filename from DB
+    with get_db_connection() as conn:
+        row = conn.execute("SELECT filename FROM images WHERE id=?", (image_id,)).fetchone()
+    if not row:
+        return jsonify({"error": "Image not found"}), 404
 
-    # Suppose we store annotations in "annotations/<image_id>.txt"
-    # or "<filename>.txt". For brevity, let's guess:
-    txt_path = os.path.join("annotations", f"{image_id}.txt")
-    if not os.path.exists(txt_path):
-        # No annotations
-        return jsonify({
-            "boxes": [],
-            "labelMap": { "0": "Unknown" }
-        })
+    db_filename = row["filename"]  # e.g. "some_image.jpg"
+    base_name, ext = os.path.splitext(db_filename)  # ("some_image", ".jpg")
+    txt_path = os.path.join(ANNOTATIONS_DIR, f"{base_name}.txt")
 
-    lines = []
-    with open(txt_path, "r") as f:
-        lines = f.read().strip().split("\n")
-
-    # Example: each line looks like:
-    # class x_center y_center w h
-    # e.g.: "0 0.500000 0.400000 0.100000 0.200000"
-    results = []
-    for line in lines:
-        parts = line.strip().split()
-        if len(parts) == 5:
-            classId = int(parts[0])
-            x_center = float(parts[1])
-            y_center = float(parts[2])
-            w = float(parts[3])
-            h = float(parts[4])
-            results.append({
-                "classId": classId,
-                "x_center": x_center,
-                "y_center": y_center,
-                "w": w,
-                "h": h
+    if request.method == "GET":
+        # ----------------- GET logic -----------------
+        if not os.path.exists(txt_path):
+            # No annotations yet
+            return jsonify({
+                "boxes": [],
+                "labelMap": {"0": "Unknown"}
             })
 
-    # For demonstration, let's say classId=0 => "Person", 1 => "Car", etc.
-    # In reality, store a separate dictionary or read from config:
-    label_map = {
-        "0": "Person",
-        "1": "Car",
-        "2": "Tree"
-    }
+        with open(txt_path, "r") as f:
+            lines = f.read().strip().split("\n")
 
-    return jsonify({
-        "boxes": results,
-        "labelMap": label_map
-    })
+        results = []
+        for line in lines:
+            parts = line.strip().split()
+            if len(parts) == 5:
+                classId = int(parts[0])
+                x_center = float(parts[1])
+                y_center = float(parts[2])
+                w = float(parts[3])
+                h = float(parts[4])
+                results.append({
+                    "classId": classId,
+                    "x_center": x_center,
+                    "y_center": y_center,
+                    "w": w,
+                    "h": h
+                })
+
+        # Example label map
+        label_map = {
+            "0": "Person",
+            "1": "Car",
+            "2": "Tree"
+        }
+        return jsonify({
+            "boxes": results,
+            "labelMap": label_map
+        })
+
+    else:
+        # ----------------- POST logic -----------------
+        data = request.json
+        if not data:
+            return jsonify({"error": "No annotation data"}), 400
+
+        boxes = data.get("boxes", [])
+        lines = []
+        for box in boxes:
+            classId = box.get("classId", 0)
+            x_center = box.get("x_center", 0.0)
+            y_center = box.get("y_center", 0.0)
+            w = box.get("w", 0.0)
+            h = box.get("h", 0.0)
+            line = f"{classId} {x_center:.6f} {y_center:.6f} {w:.6f} {h:.6f}"
+            lines.append(line)
+
+        # Write YOLO lines to e.g. `annotations/some_image.txt`
+        with open(txt_path, "w") as f:
+            f.write("\n".join(lines))
+
+        return jsonify({"message": f"Annotations saved successfully to {base_name}.txt"}), 200
 
 
-
-
-# ------------- /api/upload -------------
+# ------------------------------------------------------------------------------
+#  /api/upload  (POST)
+# ------------------------------------------------------------------------------
 @app.route("/api/upload", methods=["POST"])
 def upload_images():
     """
@@ -209,7 +224,9 @@ def upload_images():
 
     return jsonify({"message": "Upload successful", "data": saved_images})
 
-# ------------- Single-mode route (/api/images/single) -------------
+# ------------------------------------------------------------------------------
+#  /api/images/single  (GET)
+# ------------------------------------------------------------------------------
 @app.route("/api/images/single", methods=["GET"])
 def get_images_single():
     try:
@@ -271,7 +288,9 @@ def get_images_single():
         print(f"Error fetching images (single): {e}")
         return jsonify({"error": "Error fetching images"}), 500
 
-# ------------- Multiple-mode route (/api/images/multiple) -------------
+# ------------------------------------------------------------------------------
+#  /api/images/multiple  (GET)
+# ------------------------------------------------------------------------------
 @app.route("/api/images/multiple", methods=["GET"])
 def get_images_multiple():
     try:
@@ -325,13 +344,15 @@ def get_images_multiple():
                     "base64": image_b64_str,
                     "status": row["status"] or "",
                 })
-        print(query_sql, tuple(params))
+
         return jsonify(response)
     except Exception as e:
         print(f"Error fetching images (multiple): {e}")
         return jsonify({"error": "Error fetching images"}), 500
 
-# ------------- Discard route (/api/images/<image_id>/discard) -------------
+# ------------------------------------------------------------------------------
+#  /api/images/<image_id>/discard  (PUT)
+# ------------------------------------------------------------------------------
 @app.route("/api/images/<int:image_id>/discard", methods=["PUT"])
 def discard_image(image_id):
     """
@@ -364,6 +385,9 @@ def discard_image(image_id):
         return jsonify({"error": "Error discarding image"}), 500
 
 
+# ------------------------------------------------------------------------------
+#  /api/reference_image  (GET)
+# ------------------------------------------------------------------------------
 @app.route("/api/reference_image", methods=["GET"])
 def get_reference_image():
     """
@@ -375,10 +399,7 @@ def get_reference_image():
         if not search_text:
             return jsonify({"error": "No search word"}), 400
 
-        # The reference images folder
-        reference_folder = "reference_images"
-
-        # Construct path like reference_images/<search_text>.jpg
+        reference_folder = "reference_images"  # path to reference images
         ref_filename = f"{search_text}.jpg"
         ref_path = os.path.join(reference_folder, ref_filename)
 

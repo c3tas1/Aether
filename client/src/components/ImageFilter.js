@@ -1,17 +1,13 @@
 import React, { useState, useEffect, useRef } from "react";
 
-/** Hard-coded label set; adapt as needed. */
+// Hard-coded labels for demonstration:
 const ALL_LABELS = ["Person", "Car", "Tree", "Unknown"];
 
-/** The base URL for your Flask server. Adjust if needed. */
+// Adjust if needed:
 const BASE_URL = "http://127.0.0.1:5000";
 
-/**
- * PARENT COMPONENT:
- * Manages search, reference image, mode toggle, etc.
- */
 function AnnotationApp() {
-  // ============== SEARCH / STATE ==============
+  // -------------- State --------------
   const [mode, setMode] = useState("single"); // "single" or "multiple"
   const [searchQuery, setSearchQuery] = useState("");
   const [processOption, setProcessOption] = useState("");
@@ -20,35 +16,31 @@ function AnnotationApp() {
   const [images, setImages] = useState([]); // array of {id, filename, dataUrl, status}
   const [referenceImage, setReferenceImage] = useState(null);
 
-  // ============== PAGINATION (for multiple mode) ==============
+  // Pagination for multiple mode:
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
 
-  // ============== EFFECTS & FETCHES ==============
+  // -------------- Effects --------------
   useEffect(() => {
+    // If the user has typed a search or filter, we fetch images
     if (mode === "single") {
-      // If you want immediate fetch on single mode:
       if (searchQuery || processOption || classFilter) {
-        fetchImages();
         fetchReferenceImage(searchQuery);
+        fetchImages();
       }
     } else {
-      // multiple mode
       if (searchQuery || processOption || classFilter) {
-        fetchImages();
         fetchReferenceImage(searchQuery);
+        fetchImages();
       }
     }
     // eslint-disable-next-line
   }, [mode, page, pageSize]);
 
-  /** Fetch images from your Flask backend. 
-      We'll unify single vs multiple for demonstration. */
+  // -------------- Fetch Logic --------------
   async function fetchImages() {
     try {
-      const classParam = classFilter
-        ? `&class=${encodeURIComponent(classFilter)}`
-        : "";
+      const classParam = classFilter ? `&class=${encodeURIComponent(classFilter)}` : "";
       let endpoint = "";
       if (mode === "single") {
         endpoint = `${BASE_URL}/api/images/single?search=${encodeURIComponent(
@@ -78,10 +70,10 @@ function AnnotationApp() {
       }
     } catch (err) {
       console.error("Error fetching images:", err);
+      setImages([]);
     }
   }
 
-  /** Fetch reference image if any. */
   async function fetchReferenceImage(query) {
     if (!query) {
       setReferenceImage(null);
@@ -108,7 +100,7 @@ function AnnotationApp() {
     }
   }
 
-  /** Discard handler (shared). */
+  // -------------- Discard --------------
   async function handleDiscard(imageId) {
     try {
       const res = await fetch(`${BASE_URL}/api/images/${imageId}/discard`, {
@@ -119,16 +111,14 @@ function AnnotationApp() {
       }
       // update local
       setImages((prev) =>
-        prev.map((img) =>
-          img.id === imageId ? { ...img, status: "discarded" } : img
-        )
+        prev.map((img) => (img.id === imageId ? { ...img, status: "discarded" } : img))
       );
     } catch (err) {
       console.error("Error discarding image:", err);
     }
   }
 
-  /** SEARCH SUBMIT => reset page, fetch images + reference. */
+  // -------------- Search Submit --------------
   async function handleSearchSubmit(e) {
     e.preventDefault();
     setPage(1);
@@ -136,12 +126,12 @@ function AnnotationApp() {
     fetchImages();
   }
 
-  // ============== RENDER ==============
+  // -------------- Render --------------
   return (
     <div style={{ margin: "20px" }}>
-      <h1>Consolidated Annotation Viewer (Single + Multiple)</h1>
+      <h1>Annotation Viewer (Single + Multiple) with {filename => filename}.txt</h1>
 
-      {/* SEARCH FORM */}
+      {/* Search Form */}
       <form onSubmit={handleSearchSubmit} style={{ marginBottom: "20px" }}>
         <label>Search:</label>
         <input
@@ -175,7 +165,7 @@ function AnnotationApp() {
         </button>
       </form>
 
-      {/* MODE TOGGLE */}
+      {/* Mode Toggle */}
       <div style={{ marginBottom: "20px" }}>
         <button
           onClick={() => setMode("single")}
@@ -191,7 +181,7 @@ function AnnotationApp() {
         </button>
       </div>
 
-      {/* RENDER REFERENCE IMAGE */}
+      {/* Reference Image */}
       <div style={{ marginBottom: "20px", textAlign: "center" }}>
         {referenceImage ? (
           <div
@@ -225,7 +215,7 @@ function AnnotationApp() {
         )}
       </div>
 
-      {/* CONDITIONALLY RENDER SINGLE OR MULTIPLE */}
+      {/* Conditionally render Single or Multiple */}
       {mode === "single" ? (
         <ImageFilter
           images={images}
@@ -249,10 +239,7 @@ function AnnotationApp() {
   );
 }
 
-/**
- * SINGLE MODE COMPONENT (up to 1200x1600),
- * draws one image at a time with rubber-band boxes.
- */
+/** SINGLE MODE COMPONENT */
 function ImageFilter({ images, onDiscard, allLabels, baseUrl }) {
   // We show images[currentIndex].
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -268,11 +255,12 @@ function ImageFilter({ images, onDiscard, allLabels, baseUrl }) {
   // Label selection for single mode
   const [activeLabel, setActiveLabel] = useState(allLabels[0]);
 
-  // If you want to fetch existing annotations for the single image,
-  // do so when `currentIndex` changes. Then transform YOLO -> displayed.
-  // Omitted for brevity. Similar to the "multiple" approach.
+  if (images.length === 0) {
+    return <p>No images found for single mode.</p>;
+  }
+  const currentImage = images[currentIndex];
 
-  // Move left / right
+  // Navigation
   function handlePrev() {
     setCurrentIndex((prev) => (prev === 0 ? images.length - 1 : prev - 1));
     setBoxes([]);
@@ -286,14 +274,13 @@ function ImageFilter({ images, onDiscard, allLabels, baseUrl }) {
     setTempBox(null);
   }
 
-  function onImageLoad(e) {
-    // NATURAL size
+  function handleImageLoad(e) {
     const w = e.target.naturalWidth;
     const h = e.target.naturalHeight;
     setNaturalSize({ width: w, height: h });
   }
 
-  // Drawing
+  // Mouse events
   function handleMouseDown(e) {
     e.preventDefault();
     if (!containerRef.current) return;
@@ -330,11 +317,9 @@ function ImageFilter({ images, onDiscard, allLabels, baseUrl }) {
   }
 
   async function autoSaveSingle(finalBoxes) {
-    if (!images || images.length === 0) return;
-    const img = images[currentIndex];
-    const { id, filename } = img;
+    const { id, filename } = currentImage;
 
-    // Convert displayed -> YOLO
+    // measure displayed
     const rect = containerRef.current?.getBoundingClientRect();
     if (!rect) return;
     const dispW = rect.width;
@@ -343,7 +328,7 @@ function ImageFilter({ images, onDiscard, allLabels, baseUrl }) {
     const rx = naturalSize.width / dispW;
     const ry = naturalSize.height / dispH;
 
-    // Suppose label -> classId by index in allLabels
+    // label->classId
     const labelToClassId = {};
     allLabels.forEach((lbl, i) => {
       labelToClassId[lbl] = i;
@@ -355,7 +340,6 @@ function ImageFilter({ images, onDiscard, allLabels, baseUrl }) {
       const nw = b.w * rx;
       const nh = b.h * ry;
 
-      // YOLO normalized
       const x_center = (nx + nw / 2) / naturalSize.width;
       const y_center = (ny + nh / 2) / naturalSize.height;
       const w_norm = nw / naturalSize.width;
@@ -371,16 +355,12 @@ function ImageFilter({ images, onDiscard, allLabels, baseUrl }) {
     });
 
     const payload = {
+      // The backend will rely on the DB's `filename` anyway,
+      // but we pass it for reference:
       filename,
       width: naturalSize.width,
       height: naturalSize.height,
-      boxes: yoloBoxes.map((b) => ({
-        classId: b.classId,
-        x_center: b.x_center,
-        y_center: b.y_center,
-        w: b.w,
-        h: b.h,
-      })),
+      boxes: yoloBoxes,
     };
 
     try {
@@ -401,19 +381,12 @@ function ImageFilter({ images, onDiscard, allLabels, baseUrl }) {
   function handleClear() {
     setBoxes([]);
     setTempBox(null);
-    // optionally auto-save empty
-    // autoSaveSingle([]);
+    // optionally autoSaveSingle([]);
   }
-
-  if (images.length === 0) {
-    return <p>No images found for single mode.</p>;
-  }
-
-  const currentImage = images[currentIndex];
 
   return (
     <div style={{ textAlign: "center" }}>
-      {/* LABEL SELECTOR */}
+      {/* Label selector */}
       <div style={{ marginBottom: "10px" }}>
         <label>Label:&nbsp;</label>
         <select
@@ -428,15 +401,44 @@ function ImageFilter({ images, onDiscard, allLabels, baseUrl }) {
         </select>
       </div>
 
+      {/* Nav & Discard ABOVE container */}
+      <div style={{ marginBottom: "10px" }}>
+        <button onClick={handlePrev} style={{ marginRight: "10px" }}>
+          Prev
+        </button>
+        <button onClick={handleNext} style={{ marginRight: "10px" }}>
+          Next
+        </button>
+
+        {currentImage.status === "discarded" ? (
+          <button style={{ backgroundColor: "green", color: "white" }}>
+            Discarded
+          </button>
+        ) : (
+          <button
+            style={{ backgroundColor: "red", color: "white" }}
+            onClick={() => onDiscard(currentImage.id)}
+          >
+            Discard
+          </button>
+        )}
+
+        <button onClick={handleClear} style={{ marginLeft: "10px" }}>
+          Clear Boxes
+        </button>
+      </div>
+
+      {/* SCROLLABLE container so the image doesn't fill entire screen */}
       <div
         ref={containerRef}
         style={{
           position: "relative",
           maxWidth: "1200px",
-          maxHeight: "1600px",
-          margin: "0 auto 10px",
+          maxHeight: "80vh",
+          margin: "0 auto 20px",
           border: "1px solid #ccc",
           cursor: "crosshair",
+          overflow: "auto",
         }}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
@@ -445,19 +447,19 @@ function ImageFilter({ images, onDiscard, allLabels, baseUrl }) {
         <img
           src={currentImage.dataUrl}
           alt={currentImage.filename}
-          onLoad={onImageLoad}
+          onLoad={handleImageLoad}
           draggable="false"
           onDragStart={(e) => e.preventDefault()}
           style={{
             width: "100%",
-            height: "100%",
+            height: "auto",
             objectFit: "contain",
-            pointerEvents: "none", // pass events to container
+            pointerEvents: "none",
           }}
         />
-        {/* Render existing boxes (all), highlight active label in a different color? */}
+
+        {/* Render existing boxes */}
         {boxes.map((box, i) => {
-          // color if matches active label
           const color = box.label === activeLabel ? "lime" : "orange";
           return (
             <div
@@ -474,7 +476,8 @@ function ImageFilter({ images, onDiscard, allLabels, baseUrl }) {
             />
           );
         })}
-        {/* temp box */}
+
+        {/* Rubber-band temp box */}
         {tempBox && (
           <div
             style={{
@@ -489,39 +492,11 @@ function ImageFilter({ images, onDiscard, allLabels, baseUrl }) {
           />
         )}
       </div>
-
-      <div style={{ marginBottom: "10px" }}>
-        <button onClick={handlePrev} style={{ marginRight: "5px" }}>
-          Prev
-        </button>
-        <button onClick={handleNext} style={{ marginRight: "5px" }}>
-          Next
-        </button>
-
-        {/* Discard button => green if already discarded, else red */}
-        {currentImage.status === "discarded" ? (
-          <button style={{ backgroundColor: "green", color: "#fff" }}>
-            Discarded
-          </button>
-        ) : (
-          <button
-            style={{ backgroundColor: "red", color: "#fff", marginRight: "5px" }}
-            onClick={() => onDiscard(currentImage.id)}
-          >
-            Discard
-          </button>
-        )}
-
-        <button onClick={handleClear}>Clear Boxes</button>
-      </div>
     </div>
   );
 }
 
-/**
- * MULTIPLE MODE COMPONENT:
- * A grid of images, each 480x640. Fetch existing YOLO, show boxes, label dropdown in each image.
- */
+/** MULTIPLE MODE COMPONENT */
 function ImageGrid({
   images,
   onDiscard,
@@ -532,59 +507,57 @@ function ImageGrid({
   allLabels,
   baseUrl,
 }) {
-  // For each image => array of final boxes in displayed coords
+  // For each image => we store boxes in displayed coords
   const [boxesById, setBoxesById] = useState({});
   // temp box
   const [tempBoxById, setTempBoxById] = useState({});
-  // is drawing?
+  // are we drawing?
   const [isDrawingById, setIsDrawingById] = useState({});
+  // start point
   const [startPointById, setStartPointById] = useState({});
-  // natural size for YOLO conversion
+  // natural sizes
   const [naturalSizeById, setNaturalSizeById] = useState({});
-  // label selection per image
+  // selected label per image
   const [selectedLabelById, setSelectedLabelById] = useState({});
 
   const containerRefs = useRef({});
 
-  // We fix displayed size for each image
   const DISPLAY_W = 480;
   const DISPLAY_H = 640;
 
-  // ============== FETCH EXISTING ANNOTATIONS ==============
+  // fetch existing YOLO annotations after we have images
   useEffect(() => {
-    // whenever images changes, fetch annotations for each
     images.forEach((img) => {
       fetchAnnotationsForImage(img.id);
     });
   }, [images]);
 
   async function fetchAnnotationsForImage(imageId) {
-    // GET /api/images/:id/annotations => YOLO
-    // For example: { boxes: [ { classId, x_center, y_center, w, h }, ... ], labelMap: { "0": "Person", ... } }
     try {
       const res = await fetch(`${baseUrl}/api/images/${imageId}/annotations`);
       if (!res.ok) {
-        // might be no annotation => skip
+        // no annotation or error => skip
         return;
       }
       const data = await res.json();
       const yoloBoxes = data.boxes || [];
-      // We'll store them in boxesById, but can't convert until we know NAT size
-      // We'll store them in a structure so we can convert after image loads
+      // We'll store them in boxesById, but can't finalize displayed coords
+      // until the image loads. We'll keep them in a structure for now:
       setBoxesById((prev) => ({
         ...prev,
         [imageId]: yoloBoxes.map((yb) => ({
+          // store YOLO fields
           yoloClassId: yb.classId,
           yoloXCenter: yb.x_center,
           yoloYCenter: yb.y_center,
           yoloW: yb.w,
           yoloH: yb.h,
-          // displayed coords => to be computed later
+          // displayed coords => 0 for now
           x: 0,
           y: 0,
           w: 0,
           h: 0,
-          // guess label from allLabels:
+          // guess label by classId index
           label: allLabels[yb.classId] || "Unknown",
         })),
       }));
@@ -593,16 +566,13 @@ function ImageGrid({
     }
   }
 
-  // When the actual <img> loads, we do YOLO->display
+  // On image load => convert YOLO -> displayed
   function handleImageLoad(e, imageId) {
     const natW = e.target.naturalWidth;
     const natH = e.target.naturalHeight;
-    setNaturalSizeById((prev) => ({
-      ...prev,
-      [imageId]: { width: natW, height: natH },
-    }));
+    setNaturalSizeById((prev) => ({ ...prev, [imageId]: { width: natW, height: natH } }));
 
-    // convert any YOLO to displayed
+    // convert existing yoy fields
     setBoxesById((prev) => {
       const arr = prev[imageId] || [];
       const ratioX = DISPLAY_W / natW;
@@ -613,9 +583,9 @@ function ImageGrid({
           const y_center_disp = box.yoloYCenter * DISPLAY_H;
           const w_disp = box.yoloW * DISPLAY_W;
           const h_disp = box.yoloH * DISPLAY_H;
-          const xx = x_center_disp - w_disp / 2;
-          const yy = y_center_disp - h_disp / 2;
-          return { ...box, x: xx, y: yy, w: w_disp, h: h_disp };
+          const x = x_center_disp - w_disp / 2;
+          const y = y_center_disp - h_disp / 2;
+          return { ...box, x, y, w: w_disp, h: h_disp };
         }
         return box;
       });
@@ -623,23 +593,28 @@ function ImageGrid({
     });
   }
 
-  // DRAWING
+  // Drawing
   function handleMouseDown(e, imageId) {
     e.preventDefault();
-    setIsDrawingById((p) => ({ ...p, [imageId]: true }));
+    setIsDrawingById((prev) => ({ ...prev, [imageId]: true }));
+
     const rect = containerRefs.current[imageId]?.getBoundingClientRect();
     if (!rect) return;
     const sx = e.clientX - rect.left;
     const sy = e.clientY - rect.top;
-    setStartPointById((p) => ({ ...p, [imageId]: { x: sx, y: sy } }));
-    setTempBoxById((p) => ({ ...p, [imageId]: null }));
+    setStartPointById((prev) => ({ ...prev, [imageId]: { x: sx, y: sy } }));
+    setTempBoxById((prev) => ({ ...prev, [imageId]: null }));
   }
+
   function handleMouseMove(e, imageId) {
     if (!isDrawingById[imageId]) return;
-    const rect = containerRefs.current[imageId]?.getBoundingClientRect();
-    if (!rect) return;
+    const container = containerRefs.current[imageId];
+    if (!container) return;
+
+    const rect = container.getBoundingClientRect();
     const start = startPointById[imageId];
     if (!start) return;
+
     const endX = e.clientX - rect.left;
     const endY = e.clientY - rect.top;
     const x = Math.min(start.x, endX);
@@ -648,12 +623,18 @@ function ImageGrid({
     const h = Math.abs(endY - start.y);
 
     const lbl = selectedLabelById[imageId] || allLabels[0];
-    setTempBoxById((p) => ({ ...p, [imageId]: { x, y, w, h, label: lbl } }));
+    setTempBoxById((prev) => ({
+      ...prev,
+      [imageId]: { x, y, w, h, label: lbl },
+    }));
   }
+
   async function handleMouseUp(e, imageId) {
     e.preventDefault();
     if (!isDrawingById[imageId]) return;
-    setIsDrawingById((p) => ({ ...p, [imageId]: false }));
+
+    setIsDrawingById((prev) => ({ ...prev, [imageId]: false }));
+
     const temp = tempBoxById[imageId];
     if (!temp || temp.w < 5 || temp.h < 5) return;
 
@@ -663,20 +644,20 @@ function ImageGrid({
       autoSaveMultiple(imageId, newArr);
       return { ...prev, [imageId]: newArr };
     });
-    setTempBoxById((p) => ({ ...p, [imageId]: null }));
+    setTempBoxById((prev) => ({ ...prev, [imageId]: null }));
   }
 
-  // AUTO SAVE => displayed -> YOLO
+  // Save => displayed -> YOLO
   async function autoSaveMultiple(imageId, finalBoxes) {
     const nat = naturalSizeById[imageId] || { width: 1, height: 1 };
     const ratioX = nat.width / DISPLAY_W;
     const ratioY = nat.height / DISPLAY_H;
+
     // label->classId
     const labelMap = {};
     allLabels.forEach((lbl, i) => (labelMap[lbl] = i));
 
     const yoloBoxes = finalBoxes.map((b) => {
-      // displayed => natural
       const nx = b.x * ratioX;
       const ny = b.y * ratioY;
       const nw = b.w * ratioX;
@@ -699,6 +680,7 @@ function ImageGrid({
 
     const img = images.find((x) => x.id === imageId);
     if (!img) return;
+
     const payload = {
       filename: img.filename,
       width: nat.width,
@@ -721,18 +703,17 @@ function ImageGrid({
     }
   }
 
-  // CLEAR
   function handleClear(imageId) {
     setBoxesById((prev) => ({ ...prev, [imageId]: [] }));
     setTempBoxById((prev) => ({ ...prev, [imageId]: null }));
-    // optionally auto-save empty
-    // autoSaveMultiple(imageId, []);
+    // optionally autoSaveMultiple(imageId, []);
   }
 
   function handleLabelChange(e, imageId) {
     setSelectedLabelById((prev) => ({ ...prev, [imageId]: e.target.value }));
   }
 
+  // -------------- Render --------------
   return (
     <div>
       {/* PAGE CONTROL */}
@@ -776,19 +757,25 @@ function ImageGrid({
 
           const finalBoxes = boxesById[imageId] || [];
           const tempBox = tempBoxById[imageId] || null;
-          const selectedLabel = selectedLabelById[imageId] || allLabels[0];
+          const selectedLabel = selectedLabelById[imageId] || ALL_LABELS[0];
 
           return (
-            <div key={imageId} style={{ border: "1px solid #ccc" }}>
-              {/* The drawing container (480x640) */}
+            <div
+              key={imageId}
+              style={{
+                border: "1px solid #ccc",
+                padding: "5px",
+              }}
+            >
               <div
                 ref={(el) => (containerRefs.current[imageId] = el)}
                 style={{
                   position: "relative",
-                  width: "480px",
-                  height: "640px",
+                  width: `${480}px`,
+                  height: `${640}px`,
                   border: "1px solid #666",
                   cursor: "crosshair",
+                  marginBottom: "5px",
                 }}
                 onMouseDown={(e) => handleMouseDown(e, imageId)}
                 onMouseMove={(e) => handleMouseMove(e, imageId)}
@@ -807,9 +794,9 @@ function ImageGrid({
                   onDragStart={(ev) => ev.preventDefault()}
                   onLoad={(ev) => handleImageLoad(ev, imageId)}
                 />
+
                 {/* existing boxes */}
                 {finalBoxes.map((box, idx) => {
-                  // highlight if box.label == selectedLabel
                   const color = box.label === selectedLabel ? "lime" : "orange";
                   return (
                     <div
@@ -826,6 +813,7 @@ function ImageGrid({
                     />
                   );
                 })}
+
                 {/* temp box */}
                 {tempBox && (
                   <div
@@ -842,24 +830,21 @@ function ImageGrid({
                 )}
               </div>
 
-              {/* Controls inside the image display */}
-              <div style={{ padding: "5px", textAlign: "center" }}>
-                {/* Label dropdown */}
+              {/* Label selection + Discard + Clear */}
+              <div style={{ textAlign: "center" }}>
                 <div style={{ marginBottom: "5px" }}>
                   <label>Label:&nbsp;</label>
                   <select
                     value={selectedLabel}
                     onChange={(e) => handleLabelChange(e, imageId)}
                   >
-                    {allLabels.map((lbl) => (
+                    {ALL_LABELS.map((lbl) => (
                       <option key={lbl} value={lbl}>
                         {lbl}
                       </option>
                     ))}
                   </select>
                 </div>
-
-                {/* Discard / Clear */}
                 <div>
                   <button
                     style={{
@@ -882,6 +867,4 @@ function ImageGrid({
   );
 }
 
-/** Export the PARENT as default. 
-    (ImageFilter & ImageGrid are defined above in the same file.) */
 export default AnnotationApp;
