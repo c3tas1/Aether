@@ -1,11 +1,11 @@
 import React from "react";
 import ImageGallery from "./ImageGallery";
-import ImageFilter from "./ImageFilter";
+import AnnotationApp from "./ImageFilter";
 
 const Training = () => {
     return (
       <div>
-      <ImageFilter/>
+      <AnnotationApp/>
       </div>
     );
   }

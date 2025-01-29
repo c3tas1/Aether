@@ -9,6 +9,11 @@ import zipfile
 
 # ------------- SQLite Helpers -------------
 DB_PATH = "images.db"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+ANNOTATIONS_DIR = os.path.join(BASE_DIR, "annotations")
+os.makedirs(ANNOTATIONS_DIR, exist_ok=True)
+
+
 
 def get_db_connection():
     conn = sqlite3.connect(DB_PATH)
@@ -37,8 +42,81 @@ UPLOAD_FOLDER = "uploads/"
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 allowed_extensions = {"png", "jpg", "jpeg"}
 
+
+
 def allowed_file(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in allowed_extensions
+
+
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+ANNOTATIONS_DIR = os.path.join(BASE_DIR, "annotations")
+os.makedirs(ANNOTATIONS_DIR, exist_ok=True)
+
+
+# ------------- /api/images/<image_id>/annotations-------------
+@app.route("/api/images/<int:image_id>/annotations", methods=["GET"])
+def get_annotations(image_id):
+    """
+    Returns JSON array of YOLO lines, e.g.:
+      [
+        {"classId": 0, "x_center": 0.5, "y_center": 0.4, "w": 0.1, "h": 0.2},
+        ...
+      ]
+    plus an optional "labelMap" if you store classId->label.
+    """
+    import os
+    from flask import jsonify
+
+    # Suppose we store annotations in "annotations/<image_id>.txt"
+    # or "<filename>.txt". For brevity, let's guess:
+    txt_path = os.path.join("annotations", f"{image_id}.txt")
+    if not os.path.exists(txt_path):
+        # No annotations
+        return jsonify({
+            "boxes": [],
+            "labelMap": { "0": "Unknown" }
+        })
+
+    lines = []
+    with open(txt_path, "r") as f:
+        lines = f.read().strip().split("\n")
+
+    # Example: each line looks like:
+    # class x_center y_center w h
+    # e.g.: "0 0.500000 0.400000 0.100000 0.200000"
+    results = []
+    for line in lines:
+        parts = line.strip().split()
+        if len(parts) == 5:
+            classId = int(parts[0])
+            x_center = float(parts[1])
+            y_center = float(parts[2])
+            w = float(parts[3])
+            h = float(parts[4])
+            results.append({
+                "classId": classId,
+                "x_center": x_center,
+                "y_center": y_center,
+                "w": w,
+                "h": h
+            })
+
+    # For demonstration, let's say classId=0 => "Person", 1 => "Car", etc.
+    # In reality, store a separate dictionary or read from config:
+    label_map = {
+        "0": "Person",
+        "1": "Car",
+        "2": "Tree"
+    }
+
+    return jsonify({
+        "boxes": results,
+        "labelMap": label_map
+    })
+
+
+
 
 # ------------- /api/upload -------------
 @app.route("/api/upload", methods=["POST"])
@@ -247,7 +325,7 @@ def get_images_multiple():
                     "base64": image_b64_str,
                     "status": row["status"] or "",
                 })
-
+        print(query_sql, tuple(params))
         return jsonify(response)
     except Exception as e:
         print(f"Error fetching images (multiple): {e}")
