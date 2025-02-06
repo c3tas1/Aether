@@ -1,0 +1,54 @@
+Dataset got 2000 classes, images files are located in folders with class name, some classes got more than 10000 files,
+some classes got less than 5000 files. Also, this is poorly labelled dataset, I approximately have around 5-10% mislabelled files per class.
+
+Now Generate python code using pytorch to train a neural network either of CNN/Transformer variant, such that, if a class has less than 5000 files omit that class from training, if it's between 5000-10000 add weighted loss for those, and also a way to overcome the noise with the mislabeled files and if a particular class has more than 10000 files, use only 10000 files for generating the train validation split
+
+NOTE: 
+	Dataset Generation process:
+	Step 1) Images are collected and placed in their appropriate class Name. Each of these image files contain multiple object's which belong to the same class as the folder name, Now each of these objects are extracted and placed in a new parent folder with sub folder as class name and each extracted object is a new file name of format {class_name}_{image_id}_patch_{num}.jpg.
+	examples:
+		Initiall folder structure: Assuming Image_1 got 3 objects and Image_2 got 2 objects
+			Class_0: 
+				{Class_0}_{Image_1}.jpg
+				{Class_0}_{Image_2}.jpg
+		New Folder structure that should be used to train the model
+			Class_0:
+				{Class_0}_{Image_1}_Patch_0.jpg
+				{Class_0}_{Image_1}_Patch_1.jpg
+				{Class_0}_{Image_1}_Patch_2.jpg
+				{Class_0}_{Image_2}_Patch_0.jpg
+				{Class_0}_{Image_2}_Patch_1.jpg
+
+	When spltting the training and validation sets at 80:20 ratio, make sure that all Patch files that belong to the Same Image either end up in training or validation set, but not in both.
+	Example:
+		Valid Scenarios:
+			Scenario 1: 
+				Training Split:
+		
+					{Class_0}_{Image_1}_Patch_0.jpg
+					{Class_0}_{Image_1}_Patch_1.jpg
+					{Class_0}_{Image_1}_Patch_2.jpg
+				Validation Split:
+					{Class_0}_{Image_2}_Patch_0.jpg
+					{Class_0}_{Image_2}_Patch_1.jpg
+			Scenatio 2:
+				Validation Split:
+			
+					{Class_0}_{Image_1}_Patch_0.jpg
+					{Class_0}_{Image_1}_Patch_1.jpg
+					{Class_0}_{Image_1}_Patch_2.jpg
+				Training Split:
+					{Class_0}_{Image_2}_Patch_0.jpg
+					{Class_0}_{Image_2}_Patch_1.jpg
+		Invalid Scenario:
+				Validation Split:
+			
+					{Class_0}_{Image_1}_Patch_0.jpg
+					{Class_0}_{Image_1}_Patch_1.jpg
+					{Class_0}_{Image_2}_Patch_0.jpg
+				Training Split:
+					{Class_0}_{Image_2}_Patch_1.jpg
+					{Class_0}_{Image_1}_Patch_2.jpg
+
+NOTE 2:
+I do have a 8GPU system, and the dataset is of around 70 million images, so make sure to parallelize the dataloading, preprocessing and training process
