@@ -9,10 +9,8 @@
         body { font-family: sans-serif; margin: 20px; }
         .image-grid {
             display: grid;
-            /* --- THIS IS THE MODIFIED LINE --- */
-            grid-template-columns: repeat(50, 1fr); /* Creates exactly 50 flexible columns */
-            /* --- END MODIFICATION --- */
-            gap: 5px; /* Reduced gap slightly for more images */
+            grid-template-columns: repeat(50, 1fr); /* 50 columns */
+            gap: 5px;
             margin-bottom: 20px;
         }
         .image-container {
@@ -20,9 +18,7 @@
             border: 1px solid #ccc;
             overflow: hidden;
             cursor: pointer;
-            /* Maintain aspect ratio based on thumbnail size (optional but good) */
-            /* If your thumbnails are square (128x128), aspect-ratio: 1; is simpler */
-             aspect-ratio: {{ thumbnail_size[0] }} / {{ thumbnail_size[1] }};
+            aspect-ratio: {{ thumbnail_size[0] }} / {{ thumbnail_size[1] }};
         }
          .image-container img {
             display: block;
@@ -123,26 +119,27 @@
     </div>
 
     <script>
-        // Javascript remains the same
         function markBad(element) {
             const badImagePathEncoded = element.getAttribute('data-encoded-path');
-            const badImagePath = element.getAttribute('data-path');
+            const badImagePath = element.getAttribute('data-path'); // Still useful for console logging if needed
 
+            // Prevent marking again if already marked visually
             if (element.classList.contains('marked-bad')) {
                  console.log('Already marked:', badImagePath);
                  return;
             }
 
+            // Collect all *currently displayed* image paths (encoded)
             const allDisplayedImages = document.querySelectorAll('#imageGrid .image-container');
             const displayedPathsEncoded = [];
             allDisplayedImages.forEach(imgContainer => {
                 displayedPathsEncoded.push(imgContainer.getAttribute('data-encoded-path'));
             });
 
-            if (!confirm(`Mark this image as BAD?\nPath: ${badImagePath}\n\nThis will also mark the other ${displayedPathsEncoded.length - 1} images on this page as GOOD.`)) {
-                 return;
-             }
+            // --- CONFIRMATION DIALOG REMOVED ---
+            // No confirmation check here anymore
 
+            // Send data to the backend using Fetch API
             fetch("{{ url_for('mark_files') }}", {
                 method: 'POST',
                 headers: {
@@ -157,11 +154,15 @@
             .then(data => {
                 console.log('Marking response:', data);
                 if (data.status === 'ok' || data.status === 'warning') {
+                    // Provide visual feedback: mark the clicked image
                     element.classList.add('marked-bad');
-                    alert(data.message || `Marked ${badImagePath} as bad.`);
-                    element.onclick = null;
+                    // Alert is removed as per request implied by removing confirmation,
+                    // but you could add a less intrusive notification if desired.
+                    // Example: console.log(data.message || `Marked ${badImagePath} as bad.`);
+                    element.onclick = null; // Disable further clicks
                     element.style.cursor = 'default';
                 } else {
+                    // Still show alert for actual errors
                     alert(`Error marking file: ${data.message}`);
                 }
             })

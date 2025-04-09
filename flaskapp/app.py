@@ -19,7 +19,7 @@ THUMBNAIL_SIZE = (128, 128)
 # IMPORTANT: Set this to the base directory where images are stored
 # This adds a layer of security, preventing access outside this tree.
 # Set to None or '/' if images are truly scattered, but be VERY careful.
-ALLOWED_IMAGE_BASE_PATH = '/path/to/your/images/base/directory' # Or None
+ALLOWED_IMAGE_BASE_PATH = None
 
 # --- Globals ---
 # Load image paths once at startup
