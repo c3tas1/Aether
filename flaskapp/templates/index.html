@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Patch Labeling Tool</title>
+  <!-- Link to the minimal CSS for styling the grid and thumbnails -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <h1>Image Patch Labeling Tool</h1>
+  <p>Select (click) all patches that are <strong>bad</strong>. They will be highlighted. When finished, click the button below to save results.</p>
+  <!-- Finish button to submit the labeling session -->
+  <form action="{{ url_for('finish') }}" method="POST" style="margin-bottom: 15px;">
+    <button type="submit">Finish Labeling</button>
+  </form>
+
+  {% for class_name, images in image_paths_by_class.items() %}
+    <h2>{{ class_name }}</h2>
+    <div class="container">
+      {% for path in images %}
+        <img src="{{ url_for('static', filename='thumbs/' ~ path) }}" 
+             alt="{{ path }}" 
+             data-path="{{ path }}"
+             class="thumbnail{% if path in bad_set %} bad{% endif %}">
+      {% endfor %}
+    </div>
+  {% endfor %}
+
+  <script>
+    // JavaScript: handle clicks on thumbnails to mark as bad
+    document.querySelectorAll('.thumbnail').forEach(img => {
+      img.addEventListener('click', () => {
+        const imgPath = img.getAttribute('data-path');
+        // Send a POST request to mark this image as bad
+        fetch("{{ url_for('mark_bad') }}", {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: imgPath })
+        }).then(response => {
+          if (response.ok) {
+            // On success, add the 'bad' class to visually mark it
+            img.classList.add('bad');
+          } else {
+            console.error('Failed to mark as bad:', response.statusText);
+          }
+        });
+      });
+    });
+  </script>
+</body>
+</html>
+

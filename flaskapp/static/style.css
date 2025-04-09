@@ -1,0 +1,22 @@
+body { font-family: sans-serif; margin: 10px; }
+h1 { font-size: 1.5em; }
+.container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;               /* space between thumbnails */
+  align-items: flex-start; /* align items to top of row */
+  margin-bottom: 20px;
+}
+.thumbnail {
+  max-width: 150px;
+  max-height: 150px;
+  border: 1px solid #ccc;
+  cursor: pointer;
+}
+.thumbnail.bad {
+  /* Bad (clicked) patches are shown in grayscale and slightly faded */
+  filter: grayscale(100%);
+  opacity: 0.6;
+  border: 2px solid red;
+}
+
