@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 
-function App() {
+function ImageFilter() {
   const [mode, setMode] = useState("single");
   const [searchQuery, setSearchQuery] = useState("");
   const [feeOption, setFeeOption] = useState("");
