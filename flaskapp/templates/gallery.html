@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Image Gallery</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    h1 { text-align: center; }
+    /* Gallery grid layout */
+    .grid { display: flex; flex-wrap: wrap; padding: 0 5px; }
+    .grid-item { flex: 25%; max-width: 25%; padding: 5px; box-sizing: border-box; }
+    .grid-item img { width: 100%; height: auto; vertical-align: middle; cursor: pointer; 
+                     border: 2px solid #fff; }
+    .grid-item img:hover { border-color: #ccc; }
+    /* Responsive layout: 2 columns on medium screens */
+    @media screen and (max-width: 800px) {
+      .grid-item { flex: 50%; max-width: 50%; }
+    }
+    /* Responsive layout: 1 column on small screens */
+    @media screen and (max-width: 600px) {
+      .grid-item { flex: 100%; max-width: 100%; }
+    }
+    /* Pagination styles */
+    .pagination { text-align: center; margin: 15px 0; }
+    .pagination a, .pagination span { 
+      display: inline-block; margin: 0 3px; padding: 5px 10px; 
+      text-decoration: none; border: 1px solid #ccc; color: #333; 
+    }
+    .pagination .current { font-weight: bold; background: #eee; }
+    .pagination a:hover { background: #f0f0f0; }
+  </style>
+</head>
+<body>
+
+<h1>Image Gallery</h1>
+
+<div class="grid">
+  {% for image_path in images %}
+    <div class="grid-item">
+      <img src="{{ url_for('static', filename=image_path) }}" alt="Image"
+           onclick="markBad('{{ image_path }}', this.parentNode)" />
+    </div>
+  {% endfor %}
+</div>
+
+<div class="pagination">
+  {% if page > 1 %}
+    <a href="{{ url_for('index', page=page-1) }}">« Prev</a>
+  {% endif %}
+  {% for p in range(1, total_pages + 1) %}
+    {% if p == page %}
+      <span class="current">{{ p }}</span>
+    {% else %}
+      <a href="{{ url_for('index', page=p) }}">{{ p }}</a>
+    {% endif %}
+  {% endfor %}
+  {% if page < total_pages %}
+    <a href="{{ url_for('index', page=page+1) }}">Next »</a>
+  {% endif %}
+</div>
+
+<script>
+  // JavaScript function to mark an image as bad via AJAX
+  function markBad(imagePath, element) {
+    fetch("{{ url_for('mark_bad') }}", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: imagePath })
+    })
+    .then(response => {
+      if (response.ok) {
+        // On success, remove the image element from the DOM
+        element.remove();
+      } else {
+        console.error("Failed to mark image as bad:", response.statusText);
+      }
+    })
+    .catch(error => console.error("Error in markBad fetch:", error));
+  }
+</script>
+
+</body>
+</html>
+
