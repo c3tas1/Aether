@@ -9,7 +9,7 @@
     /* Gallery grid layout */
     .grid { display: flex; flex-wrap: wrap; padding: 0 5px; }
     .grid-item { flex: 25%; max-width: 25%; padding: 5px; box-sizing: border-box; }
-    .grid-item img { width: 224px; height: 224px; vertical-align: middle; cursor: pointer; 
+    .grid-item img { width: 100%; height: auto; vertical-align: middle; cursor: pointer; 
                      border: 2px solid #fff; }
     .grid-item img:hover { border-color: #ccc; }
     /* Responsive layout: 2 columns on medium screens */
@@ -38,7 +38,7 @@
   {% for image_path in images %}
     <div class="grid-item">
       <!-- Use absolute image path directly -->
-      <img src="{{ url_for('serve_image', filename=image_path) }}" alt="Image"
+      <img src="{{ image_path }}" alt="Image"
            onclick="markBad('{{ image_path }}', this.parentNode)" />
     </div>
   {% endfor %}

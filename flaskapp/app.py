@@ -1,69 +1,47 @@
 import os, pickle
-
-# Attempt to import requests for remote file fetching
-try:
-    import requests
-except ImportError:
-    requests = None
-
-from flask import Flask, request, render_template, jsonify
+from flask import Flask, request, render_template, jsonify, send_from_directory
 
 app = Flask(__name__)
 
-# Load the list of image paths from a pickled file (remote or local)
+# Path to the directory where images are stored
+IMAGE_DIRECTORY = '/path/to/your/images'  # Update this with your actual directory path
+
+# Load the list of image paths from the pickled file
 images_list = []
-remote_url = 'http://example.com/path/to/images_list.pkl'  # TODO: replace with actual URL
+with open('images_list.pkl', 'rb') as f:
+    images_list = pickle.load(f)
 
-if requests:
-    try:
-        resp = requests.get(remote_url, timeout=5)
-        if resp.status_code == 200:
-            # Unpickle the data from the remote content
-            images_list = pickle.loads(resp.content)
-    except Exception as e:
-        print(f"Warning: Could not load remote pickle: {e}")
+# Set a maximum number of images to show (1000 images in total)
+MAX_IMAGES = 1000
+images_list = images_list[:MAX_IMAGES]  # Only use the first 1000 images
 
-if not images_list:
-    # Fallback to local pickle file if remote fetch failed or not used
-    with open('images_list.pkl', 'rb') as f:
-        images_list = pickle.load(f)
-
-# Ensure we have a list of image path strings
-if not isinstance(images_list, list):
-    images_list = list(images_list)
-
-# Initialize "good" and "bad" files
-BAD_FILE = 'bad.txt'
-GOOD_FILE = 'good.txt'
-with open(BAD_FILE, 'w') as bf:
-    pass  # start with empty bad.txt
-with open(GOOD_FILE, 'w') as gf:
-    for path in images_list:
-        gf.write(path + '\n')
-
-# Keep track of remaining (unclicked) images in memory
-remaining_images = images_list[:]  # copy of the list
+# Pagination settings
+IMAGES_PER_PAGE = 20
 
 @app.route('/')
 def index():
     """Gallery page: show paginated images."""
     page = request.args.get('page', 1, type=int)
-    per_page = 20
-    total = len(remaining_images)
-    total_pages = (total + per_page - 1) // per_page  # ceiling division for total pages
+    total_images = len(images_list)
+    total_pages = (total_images + IMAGES_PER_PAGE - 1) // IMAGES_PER_PAGE  # Total pages (ceiling division)
 
     # Bound the page number within valid range
-    if page < 1:
-        page = 1
-    if total_pages > 0 and page > total_pages:
-        page = total_pages
+    page = max(1, min(page, total_pages))
 
-    # Slice the list of remaining images for the current page
-    start = (page - 1) * per_page
-    end = start + per_page
-    page_images = remaining_images[start:end]
+    # Slice the list of images for the current page
+    start = (page - 1) * IMAGES_PER_PAGE
+    end = start + IMAGES_PER_PAGE
+    page_images = images_list[start:end]
 
     return render_template('gallery.html', images=page_images, page=page, total_pages=total_pages)
+
+@app.route('/image/<filename>')
+def serve_image(filename):
+    """Serve an image from the specified directory."""
+    try:
+        return send_from_directory(IMAGE_DIRECTORY, filename)
+    except FileNotFoundError:
+        return jsonify({"error": "Image not found"}), 404
 
 @app.route('/mark_bad', methods=['POST'])
 def mark_bad():
@@ -73,22 +51,21 @@ def mark_bad():
         return jsonify({"error": "No image path provided"}), 400
 
     img_path = data['path']
-    if img_path in remaining_images:
-        # Move image from good list to bad list
-        remaining_images.remove(img_path)
+    # Move image from good list to bad list
+    if img_path in images_list:
+        images_list.remove(img_path)
         # Append to bad.txt
-        with open(BAD_FILE, 'a') as bf:
+        with open('bad.txt', 'a') as bf:
             bf.write(img_path + '\n')
         # Rewrite good.txt with current remaining images
-        with open(GOOD_FILE, 'w') as gf:
-            for path in remaining_images:
+        with open('good.txt', 'w') as gf:
+            for path in images_list:
                 gf.write(path + '\n')
         return jsonify({"status": "ok"}), 200
     else:
         # Image not in remaining list (perhaps already marked)
         return jsonify({"status": "already_marked"}), 200
 
-# (Optional) Run the Flask development server if this script is executed directly.
 if __name__ == '__main__':
     app.run(debug=True)
 
