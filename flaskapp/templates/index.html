@@ -1,52 +1,197 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Patch Labeling Tool</title>
-  <!-- Link to the minimal CSS for styling the grid and thumbnails -->
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Viewer - Page {{ current_page }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        body { font-family: sans-serif; margin: 20px; }
+        .image-grid {
+            display: grid;
+            /* Adjust columns based on desired layout and thumbnail size */
+            grid-template-columns: repeat(auto_fill, minmax({{ thumbnail_size[0] }}px, 1fr));
+            gap: 10px; /* Spacing between images */
+            margin-bottom: 20px;
+        }
+        .image-container {
+            position: relative; /* For potential overlays or icons */
+            border: 1px solid #ccc;
+            overflow: hidden; /* Ensure images fit container */
+            cursor: pointer;
+            aspect-ratio: {{ thumbnail_size[0] }} / {{ thumbnail_size[1] }}; /* Maintain aspect ratio */
+        }
+         .image-container img {
+            display: block;
+            width: 100%;
+            height: 100%;
+            object-fit: cover; /* Cover the container, might crop */
+            transition: transform 0.2s ease-in-out;
+        }
+        .image-container:hover img {
+             transform: scale(1.05); /* Slight zoom on hover */
+        }
+         .image-container.marked-bad {
+             border: 3px solid red;
+             opacity: 0.5;
+         }
+        .pagination {
+            text-align: center;
+            margin-top: 20px;
+        }
+        .pagination a, .pagination span {
+            margin: 0 5px;
+            padding: 8px 12px;
+            text-decoration: none;
+            border: 1px solid #ddd;
+            color: #337ab7;
+        }
+        .pagination span.current {
+            font-weight: bold;
+            background-color: #eee;
+            color: #333;
+        }
+         .pagination a:hover {
+             background-color: #f0f0f0;
+         }
+         .tooltip {
+            /* Basic tooltip styling - adjust as needed */
+            visibility: hidden;
+            width: auto; /* Adjust width or set max-width */
+            background-color: black;
+            color: #fff;
+            text-align: center;
+            border-radius: 6px;
+            padding: 5px 8px;
+            position: absolute;
+            z-index: 1;
+            bottom: 105%; /* Position above the image */
+            left: 50%;
+            transform: translateX(-50%);
+            opacity: 0;
+            transition: opacity 0.3s;
+            font-size: 0.8em;
+            white-space: nowrap; /* Prevent wrapping */
+        }
+        .image-container:hover .tooltip {
+            visibility: visible;
+            opacity: 1;
+        }
+    </style>
 </head>
 <body>
-  <h1>Image Patch Labeling Tool</h1>
-  <p>Select (click) all patches that are <strong>bad</strong>. They will be highlighted. When finished, click the button below to save results.</p>
-  <!-- Finish button to submit the labeling session -->
-  <form action="{{ url_for('finish') }}" method="POST" style="margin-bottom: 15px;">
-    <button type="submit">Finish Labeling</button>
-  </form>
 
-  {% for class_name, images in image_paths_by_class.items() %}
-    <h2>{{ class_name }}</h2>
-    <div class="container">
-      {% for path in images %}
-        <img src="{{ url_for('static', filename='thumbs/' ~ path) }}" 
-             alt="{{ path }}" 
+    <h1>Image Viewer</h1>
+    <p>Page {{ current_page }} of {{ total_pages }}</p>
+
+    <div class="image-grid" id="imageGrid">
+        {% for path, encoded_path in image_data %}
+        <div class="image-container"
              data-path="{{ path }}"
-             class="thumbnail{% if path in bad_set %} bad{% endif %}">
-      {% endfor %}
+             data-encoded-path="{{ encoded_path }}"
+             onclick="markBad(this)">
+            <img src="{{ url_for('serve_image', encoded_path=encoded_path) }}"
+                 alt="Image"
+                 loading="lazy"  {# Use browser's lazy loading #}
+                 width="{{ thumbnail_size[0] }}"
+                 height="{{ thumbnail_size[1] }}">
+             <span class="tooltip">{{ path }}</span> {# Show full path on hover #}
+        </div>
+        {% else %}
+        <p>No images found for this page.</p>
+        {% endfor %}
     </div>
-  {% endfor %}
 
-  <script>
-    // JavaScript: handle clicks on thumbnails to mark as bad
-    document.querySelectorAll('.thumbnail').forEach(img => {
-      img.addEventListener('click', () => {
-        const imgPath = img.getAttribute('data-path');
-        // Send a POST request to mark this image as bad
-        fetch("{{ url_for('mark_bad') }}", {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ path: imgPath })
-        }).then(response => {
-          if (response.ok) {
-            // On success, add the 'bad' class to visually mark it
-            img.classList.add('bad');
-          } else {
-            console.error('Failed to mark as bad:', response.statusText);
-          }
-        });
-      });
-    });
-  </script>
+    <div class="pagination">
+        {% if current_page > 1 %}
+            <a href="{{ url_for('index', page=current_page-1) }}">Previous</a>
+        {% endif %}
+
+        {# Basic pagination links - could be improved for many pages #}
+        {% for p in range(1, total_pages + 1) %}
+            {% if p == current_page %}
+                <span class="current">{{ p }}</span>
+            {% elif p == 1 or p == total_pages or (p >= current_page - 2 and p <= current_page + 2) %}
+                {# Show first, last, and pages around current #}
+                 <a href="{{ url_for('index', page=p) }}">{{ p }}</a>
+             {% elif p == current_page - 3 or p == current_page + 3 %}
+                 {# Add ellipsis #}
+                 <span>...</span>
+            {% endif %}
+        {% endfor %}
+
+        {% if current_page < total_pages %}
+            <a href="{{ url_for('index', page=current_page+1) }}">Next</a>
+        {% endif %}
+    </div>
+
+    <script>
+        function markBad(element) {
+            const badImagePathEncoded = element.getAttribute('data-encoded-path');
+            const badImagePath = element.getAttribute('data-path'); // For confirmation message
+
+            // Prevent marking again if already marked visually
+            if (element.classList.contains('marked-bad')) {
+                 console.log('Already marked:', badImagePath);
+                 return;
+            }
+
+            // Collect all *currently displayed* image paths (encoded)
+            const allDisplayedImages = document.querySelectorAll('#imageGrid .image-container');
+            const displayedPathsEncoded = [];
+            allDisplayedImages.forEach(imgContainer => {
+                 // Only include images that haven't been visually marked as bad yet
+                 //if (!imgContainer.classList.contains('marked-bad')) {
+                    displayedPathsEncoded.push(imgContainer.getAttribute('data-encoded-path'));
+                 //}
+            });
+
+            // Confirm before sending (optional but recommended)
+            if (!confirm(`Mark this image as BAD?\nPath: ${badImagePath}\n\nThis will also mark the other ${displayedPathsEncoded.length - 1} images on this page as GOOD.`)) {
+                 return;
+             }
+
+            // Send data to the backend using Fetch API
+            fetch("{{ url_for('mark_files') }}", {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    bad_image_path_encoded: badImagePathEncoded,
+                    displayed_paths_encoded: displayedPathsEncoded
+                }),
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('Marking response:', data);
+                if (data.status === 'ok' || data.status === 'warning') {
+                    // Provide visual feedback: mark the clicked image
+                    element.classList.add('marked-bad');
+                    alert(data.message || `Marked ${badImagePath} as bad.`);
+                    // Optionally disable further clicks on the marked item
+                    element.onclick = null;
+                    element.style.cursor = 'default';
+
+                    // You could potentially mark the 'good' ones visually too,
+                    // but it might clutter the interface. Example:
+                    /*
+                    allDisplayedImages.forEach(imgContainer => {
+                         if (imgContainer !== element && !imgContainer.classList.contains('marked-bad')) {
+                             imgContainer.style.border = '2px solid green'; // Example 'good' indication
+                         }
+                    });
+                    */
+                } else {
+                    alert(`Error marking file: ${data.message}`);
+                }
+            })
+            .catch((error) => {
+                console.error('Error:', error);
+                alert('An error occurred while communicating with the server.');
+            });
+        }
+    </script>
+
 </body>
 </html>
-
