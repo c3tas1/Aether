@@ -4,32 +4,35 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Image Viewer - Page {{ current_page }}</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}"> {# Optional external CSS #}
     <style>
         body { font-family: sans-serif; margin: 20px; }
         .image-grid {
             display: grid;
-            /* Adjust columns based on desired layout and thumbnail size */
-            grid-template-columns: repeat(auto_fill, minmax({{ thumbnail_size[0] }}px, 1fr));
-            gap: 10px; /* Spacing between images */
+            /* --- THIS IS THE MODIFIED LINE --- */
+            grid-template-columns: repeat(50, 1fr); /* Creates exactly 50 flexible columns */
+            /* --- END MODIFICATION --- */
+            gap: 5px; /* Reduced gap slightly for more images */
             margin-bottom: 20px;
         }
         .image-container {
-            position: relative; /* For potential overlays or icons */
+            position: relative;
             border: 1px solid #ccc;
-            overflow: hidden; /* Ensure images fit container */
+            overflow: hidden;
             cursor: pointer;
-            aspect-ratio: {{ thumbnail_size[0] }} / {{ thumbnail_size[1] }}; /* Maintain aspect ratio */
+            /* Maintain aspect ratio based on thumbnail size (optional but good) */
+            /* If your thumbnails are square (128x128), aspect-ratio: 1; is simpler */
+             aspect-ratio: {{ thumbnail_size[0] }} / {{ thumbnail_size[1] }};
         }
          .image-container img {
             display: block;
             width: 100%;
             height: 100%;
-            object-fit: cover; /* Cover the container, might crop */
+            object-fit: cover;
             transition: transform 0.2s ease-in-out;
         }
         .image-container:hover img {
-             transform: scale(1.05); /* Slight zoom on hover */
+             transform: scale(1.05);
         }
          .image-container.marked-bad {
              border: 3px solid red;
@@ -55,9 +58,8 @@
              background-color: #f0f0f0;
          }
          .tooltip {
-            /* Basic tooltip styling - adjust as needed */
             visibility: hidden;
-            width: auto; /* Adjust width or set max-width */
+            width: auto;
             background-color: black;
             color: #fff;
             text-align: center;
@@ -65,13 +67,13 @@
             padding: 5px 8px;
             position: absolute;
             z-index: 1;
-            bottom: 105%; /* Position above the image */
+            bottom: 105%;
             left: 50%;
             transform: translateX(-50%);
             opacity: 0;
             transition: opacity 0.3s;
             font-size: 0.8em;
-            white-space: nowrap; /* Prevent wrapping */
+            white-space: nowrap;
         }
         .image-container:hover .tooltip {
             visibility: visible;
@@ -92,10 +94,10 @@
              onclick="markBad(this)">
             <img src="{{ url_for('serve_image', encoded_path=encoded_path) }}"
                  alt="Image"
-                 loading="lazy"  {# Use browser's lazy loading #}
+                 loading="lazy"
                  width="{{ thumbnail_size[0] }}"
                  height="{{ thumbnail_size[1] }}">
-             <span class="tooltip">{{ path }}</span> {# Show full path on hover #}
+             <span class="tooltip">{{ path }}</span>
         </div>
         {% else %}
         <p>No images found for this page.</p>
@@ -106,52 +108,41 @@
         {% if current_page > 1 %}
             <a href="{{ url_for('index', page=current_page-1) }}">Previous</a>
         {% endif %}
-
-        {# Basic pagination links - could be improved for many pages #}
         {% for p in range(1, total_pages + 1) %}
             {% if p == current_page %}
                 <span class="current">{{ p }}</span>
             {% elif p == 1 or p == total_pages or (p >= current_page - 2 and p <= current_page + 2) %}
-                {# Show first, last, and pages around current #}
                  <a href="{{ url_for('index', page=p) }}">{{ p }}</a>
              {% elif p == current_page - 3 or p == current_page + 3 %}
-                 {# Add ellipsis #}
                  <span>...</span>
             {% endif %}
         {% endfor %}
-
         {% if current_page < total_pages %}
             <a href="{{ url_for('index', page=current_page+1) }}">Next</a>
         {% endif %}
     </div>
 
     <script>
+        // Javascript remains the same
         function markBad(element) {
             const badImagePathEncoded = element.getAttribute('data-encoded-path');
-            const badImagePath = element.getAttribute('data-path'); // For confirmation message
+            const badImagePath = element.getAttribute('data-path');
 
-            // Prevent marking again if already marked visually
             if (element.classList.contains('marked-bad')) {
                  console.log('Already marked:', badImagePath);
                  return;
             }
 
-            // Collect all *currently displayed* image paths (encoded)
             const allDisplayedImages = document.querySelectorAll('#imageGrid .image-container');
             const displayedPathsEncoded = [];
             allDisplayedImages.forEach(imgContainer => {
-                 // Only include images that haven't been visually marked as bad yet
-                 //if (!imgContainer.classList.contains('marked-bad')) {
-                    displayedPathsEncoded.push(imgContainer.getAttribute('data-encoded-path'));
-                 //}
+                displayedPathsEncoded.push(imgContainer.getAttribute('data-encoded-path'));
             });
 
-            // Confirm before sending (optional but recommended)
             if (!confirm(`Mark this image as BAD?\nPath: ${badImagePath}\n\nThis will also mark the other ${displayedPathsEncoded.length - 1} images on this page as GOOD.`)) {
                  return;
              }
 
-            // Send data to the backend using Fetch API
             fetch("{{ url_for('mark_files') }}", {
                 method: 'POST',
                 headers: {
@@ -166,22 +157,10 @@
             .then(data => {
                 console.log('Marking response:', data);
                 if (data.status === 'ok' || data.status === 'warning') {
-                    // Provide visual feedback: mark the clicked image
                     element.classList.add('marked-bad');
                     alert(data.message || `Marked ${badImagePath} as bad.`);
-                    // Optionally disable further clicks on the marked item
                     element.onclick = null;
                     element.style.cursor = 'default';
-
-                    // You could potentially mark the 'good' ones visually too,
-                    // but it might clutter the interface. Example:
-                    /*
-                    allDisplayedImages.forEach(imgContainer => {
-                         if (imgContainer !== element && !imgContainer.classList.contains('marked-bad')) {
-                             imgContainer.style.border = '2px solid green'; // Example 'good' indication
-                         }
-                    });
-                    */
                 } else {
                     alert(`Error marking file: ${data.message}`);
                 }
