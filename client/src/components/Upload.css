@@ -1,0 +1,112 @@
+/* --- Main Container --- */
+.upload-container {
+    display: flex;
+    justify-content: center;
+    align-items: flex-start; /* Align to the top */
+    min-height: calc(100vh - 80px); /* Adjust based on navbar height */
+    padding: 2rem;
+    background-color: #0D0D0D;
+    font-family: 'Fira Code', monospace;
+    color: #DCDCDC;
+}
+
+/* --- Upload Card --- */
+.upload-card {
+    width: 100%;
+    max-width: 800px;
+    border: 1px solid #8FBC8F;
+    background-color: rgba(143, 188, 143, 0.05); /* Very subtle background tint */
+    padding: 2rem;
+    border-radius: 5px;
+    text-align: center;
+    box-shadow: 0 0 15px rgba(143, 188, 143, 0.2);
+}
+
+.upload-title {
+    color: #8FBC8F;
+    margin-bottom: 2rem;
+    font-weight: 400;
+}
+
+/* --- Custom File Input & Dropzone --- */
+.upload-dropzone {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    border: 2px dashed #8FBC8F;
+    border-radius: 5px;
+    padding: 2rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.upload-dropzone:hover {
+    border-color: #DCDCDC;
+    background-color: rgba(143, 188, 143, 0.1);
+}
+
+/* Hide the default input */
+.upload-dropzone input[type="file"] {
+    display: none;
+}
+
+.upload-dropzone p {
+    margin: 0 0 1rem 0;
+    color: #DCDCDC;
+}
+
+.browse-btn {
+    padding: 0.6rem 1.2rem;
+    border: 1px solid #8FBC8F;
+    border-radius: 4px;
+    background-color: transparent;
+    color: #8FBC8F;
+    font-family: 'Fira Code', monospace;
+}
+
+/* --- Image Preview --- */
+.image-preview-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    margin-top: 2rem;
+    justify-content: center;
+}
+
+.preview-image {
+    max-width: 200px;
+    max-height: 200px;
+    border: 1px solid #8FBC8F;
+    border-radius: 4px;
+    object-fit: cover;
+}
+
+/* --- Upload Button --- */
+.upload-button {
+    margin-top: 2rem;
+    padding: 0.8rem 1.6rem;
+    border: 1px solid #8FBC8F;
+    border-radius: 4px;
+    background-color: #8FBC8F;
+    color: #0D0D0D;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-family: 'Fira Code', monospace;
+    font-size: 1rem;
+    font-weight: bold;
+}
+
+.upload-button:hover {
+    background-color: transparent;
+    color: #8FBC8F;
+    box-shadow: 0 0 7px #8FBC8F;
+}
+
+.upload-button:disabled {
+    border-color: #444;
+    background-color: #222;
+    color: #555;
+    cursor: not-allowed;
+    box-shadow: none;
+}

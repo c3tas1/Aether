@@ -12,7 +12,7 @@ function Navbar() {
   return (
     <nav className="navbar">
       <div className="navbar-logo">
-        <NavLink to="/">Aether</NavLink>
+        <NavLink to="/">Arkham</NavLink>
       </div>
       <div className='navbar-div'>
         <div className={`navbar-menu ${isMenuOpen ? 'open' : ''}`}>
@@ -24,7 +24,7 @@ function Navbar() {
                 <NavLink to="/upload">Upload</NavLink>
             </li>
             <li className="navbar-item">
-                <NavLink to="/training">Training</NavLink>
+                <NavLink to="/annotate">Annotate</NavLink>
             </li>
             <li className="navbar-item">
                 <NavLink to="/inference">Inference</NavLink>

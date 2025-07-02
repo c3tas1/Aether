@@ -1,1 +1,4 @@
 server/uploads/*
+server/aether_env/
+server/annotations/
+server/images.db

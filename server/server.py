@@ -16,17 +16,15 @@ os.makedirs(ANNOTATIONS_DIR, exist_ok=True)
 
 ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg"}
 
-# YOLO bounding boxes assume these display sizes.
-# Single mode = 400x400, multiple mode = 160x160
 SINGLE_MODE_WIDTH = 400
 SINGLE_MODE_HEIGHT = 400
 MULTIPLE_MODE_WIDTH = 160
 MULTIPLE_MODE_HEIGHT = 160
 
-# ---------- YOLO HELPERS ----------
+# ---------- YOLO HELPERS (No changes) ----------
 def load_yolo_annotations(filename, image_width, image_height):
     """
-    Reads <filename>.txt from ANNOTATIONS_DIR, returning a list of 
+    Reads <filename>.txt from ANNOTATIONS_DIR, returning a list of
     {classId, x, y, w, h} in *pixel coords* for the given image_width/height.
     If file not found, return [].
     """
@@ -89,7 +87,22 @@ def get_db_connection():
     return conn
 
 def initialize_db():
+    """
+    Initializes the database, creating tables and adding columns if they don't exist.
+    """
     with get_db_connection() as conn:
+        # Create datasets table
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS datasets (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                type TEXT,
+                description TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        
+        # Create images table
         conn.execute("""
             CREATE TABLE IF NOT EXISTS images (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -100,6 +113,13 @@ def initialize_db():
                 annotations TEXT DEFAULT ''
             );
         """)
+
+        # Add dataset_id to images table if it doesn't exist
+        cursor = conn.execute("PRAGMA table_info(images)")
+        columns = [col['name'] for col in cursor.fetchall()]
+        if 'dataset_id' not in columns:
+            conn.execute("ALTER TABLE images ADD COLUMN dataset_id INTEGER REFERENCES datasets(id)")
+
         conn.commit()
 
 # ---------- FLASK SETUP ----------
@@ -111,146 +131,161 @@ app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 def allowed_file(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
-# ---------- /api/upload -------------
+# ---------- /api/upload (MODIFIED) -------------
 @app.route("/api/upload", methods=["POST"])
 def upload_images():
     """
-    Upload images or a zip. If a zip, extract images.
-    Insert records into SQLite. Return JSON of saved images.
+    Receives dataset metadata and image files.
+    1. Creates a new dataset record.
+    2. Saves images and associates them with the new dataset.
     """
     if "images" not in request.files:
         return jsonify({"error": "No image files uploaded"}), 400
 
+    # Get dataset metadata from the form
+    dataset_name = request.form.get("datasetName", f"dataset-{int(datetime.datetime.now().timestamp())}")
+    dataset_type = request.form.get("datasetType", "")
+    dataset_description = request.form.get("datasetDescription", "")
+
     files = request.files.getlist("images")
     saved_images = []
+    
+    with get_db_connection() as conn:
+        try:
+            # 1. Create the dataset record
+            cur = conn.execute("""
+                INSERT INTO datasets (name, type, description) VALUES (?, ?, ?)
+            """, (dataset_name, dataset_type, dataset_description))
+            dataset_id = cur.lastrowid
+            
+            # 2. Process and save each image, linking it to the dataset
+            for file_obj in files:
+                if file_obj.filename == "":
+                    continue
 
-    for file_obj in files:
-        if file_obj.filename == "":
-            return jsonify({"error": "Empty filename"}), 400
+                if file_obj.filename.lower().endswith(".zip"):
+                    # Handle zip files
+                    timestamp = int(datetime.datetime.now().timestamp())
+                    base_name = f"{timestamp}-{os.path.splitext(file_obj.filename)[0]}"
+                    extract_dir = os.path.join(app.config["UPLOAD_FOLDER"], base_name)
+                    os.makedirs(extract_dir, exist_ok=True)
 
-        if file_obj.filename.lower().endswith(".zip"):
-            # Extract the zip
-            timestamp = int(datetime.datetime.now().timestamp())
-            base_name = f"{timestamp}-{os.path.splitext(file_obj.filename)[0]}"
-            extract_dir = os.path.join(app.config["UPLOAD_FOLDER"], base_name)
-            os.makedirs(extract_dir, exist_ok=True)
+                    with zipfile.ZipFile(file_obj, "r") as zip_ref:
+                        zip_ref.extractall(extract_dir)
 
-            with zipfile.ZipFile(file_obj, "r") as zip_ref:
-                zip_ref.extractall(extract_dir)
-
-            for root, dirs, extracted_files in os.walk(extract_dir):
-                for extracted_filename in extracted_files:
-                    extracted_path = os.path.join(root, extracted_filename)
-                    if allowed_file(extracted_filename):
-                        new_filename = f"{int(datetime.datetime.now().timestamp())}-{extracted_filename}"
-                        new_path = os.path.join(app.config["UPLOAD_FOLDER"], new_filename)
-                        os.rename(extracted_path, new_path)
-
-                        with get_db_connection() as conn:
-                            cur = conn.execute("""
-                                INSERT INTO images (filename, original_name, path, status, annotations)
-                                VALUES (?, ?, ?, ?, ?)
-                            """, (new_filename, extracted_filename, new_path, "", ""))
-                            new_id = cur.lastrowid
-                        image_data = {
-                            "id": new_id,
-                            "filename": new_filename,
-                            "original_name": extracted_filename,
-                            "path": new_path,
-                            "status": ""
-                        }
-                        saved_images.append(image_data)
-                    else:
-                        os.remove(extracted_path)
-        else:
-            # Normal image
-            if allowed_file(file_obj.filename):
-                filename = f"{int(datetime.datetime.now().timestamp())}-{file_obj.filename}"
-                image_path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
-                file_obj.save(image_path)
-
-                with get_db_connection() as conn:
+                    for root, _, extracted_files in os.walk(extract_dir):
+                        for extracted_filename in extracted_files:
+                            if allowed_file(extracted_filename):
+                                new_filename = f"{timestamp}-{extracted_filename}"
+                                new_path = os.path.join(app.config["UPLOAD_FOLDER"], new_filename)
+                                os.rename(os.path.join(root, extracted_filename), new_path)
+                                
+                                cur = conn.execute("""
+                                    INSERT INTO images (filename, original_name, path, dataset_id)
+                                    VALUES (?, ?, ?, ?)
+                                """, (new_filename, extracted_filename, new_path, dataset_id))
+                                saved_images.append({"id": cur.lastrowid, "filename": new_filename})
+                
+                elif allowed_file(file_obj.filename):
+                    # Handle single image files
+                    filename = f"{int(datetime.datetime.now().timestamp())}-{file_obj.filename}"
+                    image_path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
+                    file_obj.save(image_path)
+                    
                     cur = conn.execute("""
-                        INSERT INTO images (filename, original_name, path, status, annotations)
-                        VALUES (?, ?, ?, ?, ?)
-                    """, (filename, file_obj.filename, image_path, "", ""))
-                    new_id = cur.lastrowid
+                        INSERT INTO images (filename, original_name, path, dataset_id)
+                        VALUES (?, ?, ?, ?)
+                    """, (filename, file_obj.filename, image_path, dataset_id))
+                    saved_images.append({"id": cur.lastrowid, "filename": filename})
 
-                image_data = {
-                    "id": new_id,
-                    "filename": filename,
-                    "original_name": file_obj.filename,
-                    "path": image_path,
-                    "status": ""
-                }
-                saved_images.append(image_data)
-            else:
-                return jsonify({"error": "Unsupported file extension"}), 400
+            conn.commit()
+            return jsonify({"message": f"Dataset '{dataset_name}' created and {len(saved_images)} images uploaded.", "data": saved_images})
 
-    return jsonify({"message": "Upload successful", "data": saved_images})
+        except sqlite3.Error as e:
+            conn.rollback()
+            return jsonify({"error": f"Database error: {e}"}), 500
+        except Exception as e:
+            conn.rollback()
+            return jsonify({"error": f"An error occurred: {e}"}), 500
 
-# ---------- /api/images/single -------------
+# ---------- Query Builder Helper (NEW) ----------
+def build_image_query(args):
+    """
+    Builds the SELECT, JOIN, and WHERE clauses for fetching images.
+    Returns the query string and a tuple of parameters.
+    """
+    search_text = args.get("search", "")
+    
+    # Base query with a join
+    query_sql = """
+        SELECT i.*, d.name as dataset_name
+        FROM images i
+        LEFT JOIN datasets d ON i.dataset_id = d.id
+    """
+    
+    sql_conditions = []
+    params = []
+
+    if search_text:
+        # Search across multiple fields in both tables
+        sql_conditions.append("""
+            (i.filename LIKE ? OR 
+             i.original_name LIKE ? OR 
+             d.name LIKE ? OR 
+             d.type LIKE ? OR 
+             d.description LIKE ?)
+        """)
+        like_pattern = f"%{search_text}%"
+        for _ in range(5):
+            params.append(like_pattern)
+            
+    # You can add more specific filters here later, e.g.:
+    # if args.get("datasetType"):
+    #     sql_conditions.append("d.type = ?")
+    #     params.append(args.get("datasetType"))
+
+    if sql_conditions:
+        query_sql += " WHERE " + " AND ".join(sql_conditions)
+        
+    return query_sql, tuple(params)
+
+
+# ---------- /api/images/single (MODIFIED) -------------
 @app.route("/api/images/single", methods=["GET"])
 def get_images_single():
-    """
-    Single-mode: returns images, optionally with YOLO boxes if fee=Obj Det.
-    We'll assume images are displayed at 400x400 in the frontend.
-    """
+    """Single-mode: returns images, optionally with YOLO boxes."""
     try:
         page = int(request.args.get("page", 1))
         per_page = int(request.args.get("per_page", 10))
-        search_text = request.args.get("search", "")
         fee = request.args.get("fee", "")
-
         skip = (page - 1) * per_page
-        sql_conditions = []
-        params = []
-
-        if search_text:
-            sql_conditions.append("(filename LIKE ? OR original_name LIKE ?)")
-            like_pattern = f"%{search_text}%"
-            params.append(like_pattern)
-            params.append(like_pattern)
-
-        # Optionally exclude discarded
-        # sql_conditions.append("status != 'discarded'")
-
-        where_clause = ""
-        if sql_conditions:
-            where_clause = "WHERE " + " AND ".join(sql_conditions)
-
-        query_sql = f"""
-            SELECT *
-            FROM images
-            {where_clause}
-            LIMIT ? OFFSET ?
-        """
-        params.append(per_page)
-        params.append(skip)
+        
+        query_sql, params = build_image_query(request.args)
+        
+        # Add ordering and pagination
+        query_sql += " ORDER BY i.id DESC LIMIT ? OFFSET ?"
+        params += (per_page, skip)
 
         response = []
         with get_db_connection() as conn:
-            rows = conn.execute(query_sql, tuple(params)).fetchall()
+            rows = conn.execute(query_sql, params).fetchall()
             for row in rows:
-                image_id = row["id"]
-                filename = row["filename"]
-                image_path = row["path"]
-
-                with open(image_path, "rb") as f:
+                with open(row["path"], "rb") as f:
                     b64_str = base64.b64encode(f.read()).decode("utf-8")
 
-                # Load YOLO boxes if fee=Obj Det
                 boxes = []
                 if fee == "Obj Det":
-                    boxes = load_yolo_annotations(filename, SINGLE_MODE_WIDTH, SINGLE_MODE_HEIGHT)
+                    boxes = load_yolo_annotations(row["filename"], SINGLE_MODE_WIDTH, SINGLE_MODE_HEIGHT)
 
                 response.append({
-                    "id": image_id,
-                    "filename": filename,
+                    "id": row["id"],
+                    "filename": row["filename"],
                     "original_name": row["original_name"],
                     "base64": b64_str,
                     "status": row["status"] or "",
-                    "boxes": boxes
+                    "boxes": boxes,
+                    "dataset_id": row["dataset_id"],
+                    "dataset_name": row["dataset_name"]
                 })
 
         return jsonify(response)
@@ -258,65 +293,42 @@ def get_images_single():
         print("Error fetching single images:", e)
         return jsonify({"error": str(e)}), 500
 
-# ---------- /api/images/multiple -------------
+# ---------- /api/images/multiple (MODIFIED) -------------
 @app.route("/api/images/multiple", methods=["GET"])
 def get_images_multiple():
-    """
-    Multiple-mode: returns images, optionally with YOLO boxes if fee=Obj Det.
-    We'll assume images are displayed at 160x160 in the frontend.
-    """
+    """Multiple-mode: returns images, optionally with YOLO boxes."""
     try:
         fee = request.args.get("fee", "")
         page = int(request.args.get("page", 1))
         limit = int(request.args.get("limit", 25))
-        search_text = request.args.get("search", "")
-
         skip = (page - 1) * limit
 
-        sql_conditions = []
-        params = []
-
-        if search_text:
-            sql_conditions.append("(filename LIKE ? OR original_name LIKE ?)")
-            like_pattern = f"%{search_text}%"
-            params.append(like_pattern)
-            params.append(like_pattern)
-
-        where_clause = ""
-        if sql_conditions:
-            where_clause = "WHERE " + " AND ".join(sql_conditions)
-
-        query_sql = f"""
-            SELECT *
-            FROM images
-            {where_clause}
-            LIMIT ? OFFSET ?
-        """
-        params.append(limit)
-        params.append(skip)
-
+        query_sql, params = build_image_query(request.args)
+        
+        # Add ordering and pagination
+        query_sql += " ORDER BY i.id DESC LIMIT ? OFFSET ?"
+        params += (limit, skip)
+        
         response = []
         with get_db_connection() as conn:
-            rows = conn.execute(query_sql, tuple(params)).fetchall()
+            rows = conn.execute(query_sql, params).fetchall()
             for row in rows:
-                image_id = row["id"]
-                filename = row["filename"]
-                image_path = row["path"]
-
-                with open(image_path, "rb") as f:
+                with open(row["path"], "rb") as f:
                     b64_str = base64.b64encode(f.read()).decode("utf-8")
 
                 boxes = []
                 if fee == "Obj Det":
-                    boxes = load_yolo_annotations(filename, MULTIPLE_MODE_WIDTH, MULTIPLE_MODE_HEIGHT)
+                    boxes = load_yolo_annotations(row["filename"], MULTIPLE_MODE_WIDTH, MULTIPLE_MODE_HEIGHT)
 
                 response.append({
-                    "id": image_id,
-                    "filename": filename,
+                    "id": row["id"],
+                    "filename": row["filename"],
                     "original_name": row["original_name"],
                     "base64": b64_str,
                     "status": row["status"] or "",
-                    "boxes": boxes
+                    "boxes": boxes,
+                    "dataset_id": row["dataset_id"],
+                    "dataset_name": row["dataset_name"]
                 })
 
         return jsonify(response)
@@ -324,44 +336,28 @@ def get_images_multiple():
         print("Error fetching multiple images:", e)
         return jsonify({"error": str(e)}), 500
 
-# ---------- Discard -------------
+# ---------- Discard (No changes) -------------
 @app.route("/api/images/<int:image_id>/discard", methods=["PUT"])
 def discard_image(image_id):
     try:
         with get_db_connection() as conn:
-            cur = conn.execute("""
-                UPDATE images
-                SET status = 'discarded'
-                WHERE id = ?
-            """, (image_id,))
+            cur = conn.execute("UPDATE images SET status = 'discarded' WHERE id = ?", (image_id,))
             if cur.rowcount == 0:
                 return jsonify({"error": "Image not found"}), 404
-
+            
+            conn.commit()
             row = conn.execute("SELECT * FROM images WHERE id = ?", (image_id,)).fetchone()
             if row:
-                return jsonify({
-                    "message": "Image discarded",
-                    "image_id": row["id"],
-                    "status": row["status"]
-                })
+                return jsonify({ "message": "Image discarded", "image_id": row["id"], "status": row["status"] })
             else:
                 return jsonify({"error": "Image not found after update"}), 404
     except Exception as e:
         print("Error discarding image:", e)
         return jsonify({"error": str(e)}), 500
 
-# ---------- Save YOLO Annotations -------------
+# ---------- Save YOLO Annotations (No changes) -------------
 @app.route("/api/annotations/<filename>", methods=["PUT"])
 def put_yolo_annotations(filename):
-    """
-    Expects JSON:
-      {
-        "boxes": [ { "classId":..., "x":..., "y":..., "w":..., "h":... }, ...],
-        "imageWidth": 400 or 160,
-        "imageHeight": 400 or 160
-      }
-    Writes YOLO lines to <filename>.txt in ANNOTATIONS_DIR.
-    """
     try:
         data = request.get_json()
         if not data:
@@ -379,7 +375,5 @@ def put_yolo_annotations(filename):
 
 # ---------- Init & Run ----------
 if __name__ == "__main__":
-    if not os.path.exists(DB_PATH):
-        open(DB_PATH, 'a').close()
     initialize_db()
     app.run(host="127.0.0.1", port=5000, debug=True)

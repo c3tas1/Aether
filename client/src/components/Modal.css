@@ -1,0 +1,45 @@
+/* --- Modal Styles --- */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(13, 13, 13, 0.85); /* Dark overlay */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+    backdrop-filter: blur(5px);
+}
+
+.modal-content {
+    background-color: #0D0D0D;
+    padding: 2rem;
+    border-radius: 5px;
+    border: 1px solid #8FBC8F;
+    box-shadow: 0 0 25px rgba(143, 188, 143, 0.3);
+    position: relative;
+    width: 90%;
+    max-width: 600px;
+    font-family: 'Fira Code', monospace;
+}
+
+.modal-close-button {
+    position: absolute;
+    top: 10px;
+    right: 15px;
+    background: none;
+    border: none;
+    color: #8FBC8F;
+    font-size: 2rem;
+    cursor: pointer;
+    line-height: 1;
+    padding: 0;
+    transition: all 0.2s ease;
+}
+
+.modal-close-button:hover {
+    color: #DCDCDC;
+    text-shadow: 0 0 5px #DCDCDC;
+}

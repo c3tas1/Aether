@@ -1,71 +1,330 @@
-.image-filter-container {
-    /* Add container styles */
-    width: 80%;
-    margin: 0 auto;
-    font-family: sans-serif;
-  }
-  
-  .search-bar {
-    margin-bottom: 20px;
-  }
-  
-  .react-select-container {
-    /* Add styles for react-select */
-    width: 300px;
-  }
-  
-  .checkbox-group {
+/* --- Base Container & Typography --- */
+.training-container {
+    background-color: #0D0D0D;
+    color: #DCDCDC;
+    font-family: 'Fira Code', monospace;
+    min-height: calc(100vh - 80px);
+    padding: 2rem;
+}
+
+.page-title {
+    color: #8FBC8F;
+    font-weight: 400;
+    text-align: center;
+    margin-bottom: 2rem;
+    letter-spacing: 2px;
+}
+
+.status-text {
+    text-align: center;
+    margin-top: 3rem;
+    color: #888;
+}
+
+/* --- Top Controls Layout --- */
+.controls-grid {
     display: flex;
-    gap: 20px;
-    margin-bottom: 20px;
-  }
-  
-  .checkbox-group label {
+    flex-wrap: wrap;
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.control-group {
+    border: 1px solid #8FBC8F;
+    padding: 1.5rem;
+    border-radius: 4px;
+    background-color: rgba(143, 188, 143, 0.05);
+    flex: 1 1 300px;
+}
+
+.control-group legend {
+    color: #8FBC8F;
+    padding: 0 0.5rem;
+    margin-left: 1rem;
+    font-size: 0.9rem;
+}
+
+.control-group form {
     display: flex;
+    gap: 1rem;
     align-items: center;
-  }
-  
-  .images-per-page {
-    margin-bottom: 20px;
-  }
-  
-  .loading {
-    text-align: center;
-    font-size: 20px;
-    margin-bottom: 20px;
-  }
-  
-  .error {
-    color: red;
-    text-align: center;
-    font-size: 18px;
-    margin-bottom: 20px;
-  }
-  
-  .image-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(480px, 1fr)); /* Responsive grid */
-    grid-gap: 20px;
-  }
-  
-  .image-item {
-    border: 1px solid #ccc;
-    box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.1);
-  }
-  
-  .pagination {
+}
+
+/* --- Panel Sizing --- */
+.filter-search-panel {
+    flex-grow: 2;
+}
+
+.view-mode-panel {
+    flex-grow: 1.5;
+    flex-basis: 320px;
+}
+
+.models-panel {
+    flex-grow: 1.5;
+    flex-basis: 300px;
+}
+
+/* --- Terminal-style UI Elements --- */
+.terminal-button, .terminal-input, .terminal-select {
+    background-color: transparent;
+    border: 1px solid #8FBC8F;
+    color: #DCDCDC;
+    padding: 0.6rem 1.2rem;
+    font-family: 'Fira Code', monospace;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+}
+
+.terminal-input {
+    flex-grow: 1;
+}
+
+.terminal-button {
+    cursor: pointer;
+}
+
+.terminal-button:hover, .terminal-input:focus, .terminal-select:focus {
+    outline: none;
+    border-color: #DCDCDC;
+    box-shadow: 0 0 7px rgba(143, 188, 143, 0.5);
+}
+
+.terminal-button.primary, .terminal-button.active {
+    background-color: #8FBC8F;
+    color: #0D0D0D;
+    font-weight: bold;
+}
+
+.terminal-button:disabled {
+    border-color: #444;
+    background-color: #222;
+    color: #555;
+    cursor: not-allowed;
+    box-shadow: none;
+}
+
+/* Custom File Input */
+input[type="file"] {
+    display: none;
+}
+
+/* Select element styling */
+.terminal-select {
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%238FBC8F%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E');
+    background-repeat: no-repeat;
+    background-position: right 1rem center;
+    background-size: .65em auto;
+}
+
+/* --- React Select (Searchable Dropdown) Theming --- */
+.react-select-container {
+    width: 100%;
+}
+.react-select__control {
+    background-color: transparent !important;
+    border: 1px solid #8FBC8F !important;
+    border-radius: 4px !important;
+    font-family: 'Fira Code', monospace !important;
+    min-height: 44px !important; /* Match button height */
+}
+.react-select__control--is-focused, .react-select__control:hover {
+    border-color: #DCDCDC !important;
+    box-shadow: 0 0 7px rgba(143, 188, 143, 0.5) !important;
+}
+.react-select__value-container {
+    padding: 0 1rem !important;
+}
+.react-select__placeholder, .react-select__single-value {
+    color: #DCDCDC !important;
+}
+.react-select__input-container, .react-select__input {
+    color: #DCDCDC !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+.react-select__indicator-separator {
+    display: none !important;
+}
+.react-select__indicator {
+    color: #8FBC8F !important;
+}
+.react-select__menu {
+    background-color: #0D0D0D !important;
+    border: 1px solid #8FBC8F !important;
+    border-radius: 4px !important;
+    font-family: 'Fira Code', monospace !important;
+}
+.react-select__option {
+    background-color: transparent !important;
+    color: #DCDCDC !important;
+}
+.react-select__option:hover {
+    background-color: rgba(143, 188, 143, 0.1) !important;
+}
+.react-select__option--is-focused {
+    background-color: rgba(143, 188, 143, 0.2) !important;
+}
+.react-select__option--is-selected {
+    background-color: #8FBC8F !important;
+    color: #0D0D0D !important;
+    font-weight: bold;
+}
+
+
+/* --- Main Content Area --- */
+.main-content-area {
+    margin-top: 2rem;
+    margin-bottom: 2rem;
+}
+
+/* --- Full-width Class Selector --- */
+.class-selector-panel {
+    border: 1px solid #8FBC8F;
+    padding: 1.5rem;
+    border-radius: 4px;
+    background-color: rgba(143, 188, 143, 0.05);
+    margin-top: 2rem;
+}
+.class-selector-panel legend {
+    color: #8FBC8F;
+    padding: 0 0.5rem;
+    margin-left: 1rem;
+    font-size: 0.9rem;
+}
+.class-buttons-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+}
+
+
+/* --- Action Bar & Pagination --- */
+.action-bar, .pagination-controls {
     display: flex;
     justify-content: center;
-    margin-top: 20px;
-    list-style: none;
-    padding: 0;
-  }
-  
-  .pagination li {
-    margin: 0 5px;
-  }
-  
-  .pagination li.active button {
-    background-color: #007bff;
-    color: white;
-  }
+    align-items: center;
+    gap: 1rem;
+    margin: 2rem 0;
+}
+.pagination-controls span {
+    color: #8FBC8F;
+}
+
+/* --- Single & Multiple Mode --- */
+.single-mode-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+.single-image-wrapper {
+    position: relative;
+    max-width: 800px;
+    width: 100%;
+    border: 1px solid #8FBC8F;
+    box-shadow: 0 0 15px rgba(143, 188, 143, 0.2);
+}
+.main-image {
+    display: block;
+    width: 100%;
+    height: auto;
+}
+.annotation-canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    cursor: crosshair;
+}
+.multiple-mode-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1.5rem;
+}
+.thumb-card {
+    border: 1px solid #8FBC8F;
+    border-radius: 4px;
+    background-color: rgba(143, 188, 143, 0.05);
+    display: flex;
+    flex-direction: column;
+}
+.thumb-image-wrapper {
+    position: relative;
+    width: 100%;
+}
+.thumb-controls {
+    display: flex;
+    gap: 0.5rem;
+    padding: 0.5rem;
+    justify-content: center;
+}
+.terminal-button.small {
+    padding: 0.3rem 0.6rem;
+    font-size: 0.75rem;
+}
+.terminal-button.discard {
+    border-color: #c44;
+    color: #c44;
+}
+.terminal-button.discard:hover {
+    background-color: #c44;
+    color: #fff;
+}
+.terminal-button.discarded {
+    border-color: #444;
+    background-color: #222;
+    color: #555;
+}
+/* Add these styles to components/ImageFilter.css */
+
+.modal-form {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.modal-form .page-title {
+    margin-bottom: 0;
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.form-group label {
+    color: #8FBC8F;
+    font-size: 0.9rem;
+}
+
+.terminal-textarea {
+    background-color: transparent;
+    border: 1px solid #8FBC8F;
+    color: #DCDCDC;
+    padding: 0.6rem 1.2rem;
+    font-family: 'Fira Code', monospace;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+    resize: vertical;
+}
+
+.terminal-textarea:focus {
+    outline: none;
+    border-color: #DCDCDC;
+    box-shadow: 0 0 7px rgba(143, 188, 143, 0.5);
+}
+
+.data-input-form {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+}
+
+.terminal-button.full-width {
+    width: 100%;
+}

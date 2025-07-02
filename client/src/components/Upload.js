@@ -1,97 +1,88 @@
 import React, { useState } from "react";
+import './Upload.css'; // Import the new CSS file
 
 const Upload = () => {
     const [selectedImages, setSelectedImages] = useState([]);
     const [imageUrls, setImageUrls] = useState([]);
-    
+    const [isHovering, setIsHovering] = useState(false);
+
     const handleImageChange = (event) => {
         const files = Array.from(event.target.files);
         setSelectedImages(files);
-    
-        const urls = [];
-        files.forEach((file) => {
-        const reader = new FileReader();
-        reader.onload = () => { // Use onload instead of onloadend
-            urls.push(reader.result);
-            if (urls.length === files.length) { // Check if all URLs are generated
-            setImageUrls(urls); 
-            }
-        };
-        reader.readAsDataURL(file);
-        });
+
+        const urls = files.map(file => URL.createObjectURL(file));
+        setImageUrls(urls);
     };
-    
+
     const handleUpload = async () => {
         if (!selectedImages.length) {
-        alert('Please select at least one image.');
-        return;
+            alert('Please select at least one image.');
+            return;
         }
-    
+
         try {
-        // Replace with your actual upload logic for multiple images
-        console.log('Uploading images:', selectedImages);
-        // ... (your upload logic using FormData)
-    
-        // Clear the selected images after successful upload
-        setSelectedImages([]);
-        setImageUrls([]);
-        alert('Images uploaded successfully!');
+            // This is where you would put your actual upload logic
+            console.log('Uploading images:', selectedImages);
+
+            // Clear the selected images after successful upload
+            setSelectedImages([]);
+            setImageUrls([]);
+            alert('Images uploaded successfully!');
         } catch (error) {
-        console.error('Error uploading images:', error);
-        alert('Error uploading images.');
+            console.error('Error uploading images:', error);
+            alert('Error uploading images.');
         }
     };
-    
+
     return (
-        <div style={{ 
-        display: 'flex', 
-        justifyContent: 'center', 
-        alignItems: 'center', 
-        minHeight: '100vh', 
-        backgroundColor: '#f4f4f4' // Example background color
-        }}>
-        <div style={{ 
-            border: '1px solid #ccc', 
-            padding: '30px', 
-            borderRadius: '5px', 
-            backgroundColor: '#fff',
-            textAlign: 'center' 
-        }}>
-            <input type="file" accept="image/*" multiple onChange={handleImageChange} />
-    
-            <div style={{ 
-            display: 'flex', 
-            flexWrap: 'wrap', 
-            marginTop: '20px', 
-            justifyContent: 'center' 
-            }}>
-            {imageUrls.map((imageUrl, index) => (
-                <img 
-                key={index} 
-                src={imageUrl} 
-                alt={`Uploaded preview ${index + 1}`} 
-                style={{ maxWidth: '200px', margin: '10px' }} 
-                />
-            ))}
+        <div className="upload-container">
+            <div className="upload-card">
+                <h2 className="upload-title">{'// Initialize Upload Sequence'}</h2>
+                
+                {/* Custom-styled file input */}
+                <label 
+                    htmlFor="file-input" 
+                    className="upload-dropzone"
+                    onDragEnter={() => setIsHovering(true)}
+                    onDragLeave={() => setIsHovering(false)}
+                    onDrop={() => setIsHovering(false)}
+                >
+                    <input 
+                        id="file-input" 
+                        type="file" 
+                        accept="image/*" 
+                        multiple 
+                        onChange={handleImageChange} 
+                    />
+                    <p>{isHovering ? 'Release to select files' : 'Drag & drop files here, or click to select'}</p>
+                    <span className="browse-btn">Browse Files</span>
+                </label>
+                
+                {/* Image preview section */}
+                {imageUrls.length > 0 && (
+                    <div className="image-preview-container">
+                        {imageUrls.map((imageUrl, index) => (
+                            <img
+                                key={index}
+                                src={imageUrl}
+                                alt={`Preview ${index + 1}`}
+                                className="preview-image"
+                            />
+                        ))}
+                    </div>
+                )}
+                
+                {/* Upload button */}
+                <button
+                    onClick={handleUpload}
+                    disabled={!selectedImages.length}
+                    className="upload-button"
+                >
+                    Execute Upload
+                </button>
             </div>
-    
-            <button 
-            onClick={handleUpload} 
-            disabled={!selectedImages.length} 
-            style={{ 
-                marginTop: '20px', 
-                padding: '10px 20px', 
-                cursor: 'pointer',
-                backgroundColor: '#007bff', // Example button color
-                color: '#fff',
-                border: 'none',
-                borderRadius: '5px'
-            }}
-            >
-            Upload
-            </button>
-        </div>
         </div>
     );
 }
+
 export default Upload;

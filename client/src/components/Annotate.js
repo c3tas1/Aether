@@ -1,8 +1,7 @@
 import React from "react";
-import ImageGallery from "./ImageGallery";
 import ImageFilter from "./ImageFilter";
 
-const Training = () => {
+const Annotate = () => {
     return (
       <div>
       <ImageFilter/>
@@ -10,4 +9,4 @@ const Training = () => {
     );
   }
 
-export default Training;
+export default Annotate;

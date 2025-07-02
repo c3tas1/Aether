@@ -1,107 +1,145 @@
+/* --- Base Styles & Hacker Theme --- */
 .navbar {
-	display: flex;
-	justify-content: space-between;
-	align-items: center;
-	padding: 1rem;
-	background-color: #ec3a3a;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 2rem;
+    background-color: #0D0D0D; /* Near-black background */
+    font-family: 'Fira Code', monospace; /* Monospaced font for terminal look */
+    border-bottom: 1px solid #8FBC8F; /* Subtle green bottom border */
+    box-shadow: 0 0 10px rgba(143, 188, 143, 0.1); /* Subtle outer glow */
 }
 
+/* --- Logo Styling --- */
 .navbar-logo a {
-	text-decoration: none;
-	font-size: 1.5rem;
-	font-weight: bold;
-	color: #333;
+    text-decoration: none;
+    font-size: 1.5rem;
+    font-weight: bold;
+    color: #8FBC8F; /* More subtle green for the logo */
+    text-shadow: 0 0 3px #8FBC8F, 0 0 7px #8FBC8F; /* Less intense glow */
 }
 
+/* --- Menu & List Styles --- */
 .navbar-menu {
-	display: flex;
-	gap: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
 }
 
 .navbar-list {
-	display: flex;
-	list-style: none;
-	margin: 0;
-	margin-top: 0.4rem;
-	padding: 0;
-	gap: 1rem;
-
+    display: flex;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    gap: 1.5rem;
 }
 
 .navbar-item a {
-	text-decoration: none;
-	color: #0D0D0D;
-	font-size: 1rem;
-	border: none;
-	border-radius: 2px;
-	background-color: #D3D3D3;
-	cursor: pointer;
+    text-decoration: none;
+    color: #DCDCDC; /* Light gray for better readability */
+    font-size: 1rem;
+    padding: 0.5rem;
+    transition: all 0.3s ease-in-out;
+    border-radius: 4px;
 }
 
-.navbar-actions {
-	display: flex;
-	gap: 0.5rem;
-}	
+/* --- Active Link & Hover Effects --- */
+.navbar-item a:hover {
+    background-color: rgba(143, 188, 143, 0.1);
+    color: #FFFFFF;
+    text-shadow: 0 0 5px #8FBC8F;
+}
 
+.navbar-item a.active {
+    color: #0D0D0D;
+    background-color: #8FBC8F;
+    box-shadow: 0 0 7px #8FBC8F;
+}
+
+/* --- Action Buttons --- */
+.navbar-actions {
+    display: flex;
+    gap: 1rem;
+}
+
+.navbar-button {
+    padding: 0.6rem 1.2rem;
+    border: 1px solid #8FBC8F;
+    border-radius: 4px;
+    background-color: transparent;
+    color: #8FBC8F;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-family: 'Fira Code', monospace;
+}
+
+.navbar-button:hover {
+    background-color: #8FBC8F;
+    color: #0D0D0D;
+    box-shadow: 0 0 7px #8FBC8F;
+}
+
+.navbar-button-primary {
+    background-color: #8FBC8F;
+    color: #0D0D0D;
+}
+
+.navbar-button-primary:hover {
+    background-color: transparent;
+    color: #8FBC8F;
+}
+
+/* --- Responsive Design --- */
 .navbar-div {
 	display: flex;
 	align-items: center;
 }
 
-.navbar-button {
-	padding: 0.5rem 1rem;
-	border: none;
-	border-radius: 4px;
-	background-color: #eee;
-	color: #333;
-	cursor: pointer;
-}
-.navbar-button-primary {
-	background-color: #007bff;
-	color: #fff;
-}
 .navbar-toggle {
-	display: none;
-	border: none;
-	background-color: transparent;
-	font-size: 1.5rem;
-	cursor: pointer;
+    display: none; /* Hidden by default */
+    border: none;
+    background-color: transparent;
+    font-size: 1.8rem;
+    cursor: pointer;
+    color: #8FBC8F;
 }
 
 .navbar-toggle-icon {
-	display: block;
+    display: block;
+    text-shadow: 0 0 3px #8FBC8F;
 }
 
+/* Media query for mobile view */
+@media (max-width: 768px) {
+    .navbar-toggle {
+        display: block; /* Show the hamburger icon */
+    }
 
+    .navbar-menu {
+        display: none; /* Hide the menu by default */
+        flex-direction: column;
+        position: absolute;
+        top: 70px; /* Adjust as needed */
+        left: 0;
+        width: 100%;
+        background-color: #0D0D0D;
+        border-top: 1px solid #8FBC8F;
+    }
 
+    .navbar-menu.open {
+        display: flex; /* Show the menu when open */
+    }
 
+    .navbar-list {
+        flex-direction: column;
+        width: 100%;
+        text-align: center;
+        padding: 1rem 0;
+    }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    .navbar-actions {
+        flex-direction: column;
+        width: 100%;
+        padding: 1rem;
+    }
+}
