@@ -97,9 +97,8 @@
 }
 
 .terminal-button:disabled {
-    border-color: #444;
-    background-color: #222;
-    color: #555;
+    background-color: #8FBC8F;
+    color: #0D0D0D;
     cursor: not-allowed;
     box-shadow: none;
 }
@@ -327,4 +326,37 @@ input[type="file"] {
 
 .terminal-button.full-width {
     width: 100%;
+}
+
+/* Add these styles to components/ImageFilter.css */
+
+.modal-content {
+    max-width: 800px; /* Widen the modal for the new layout */
+}
+
+.modal-header-art {
+    color: #8FBC8F;
+    text-align: center;
+    margin-bottom: 2rem;
+    font-size: 1rem;
+    white-space: pre;
+    text-shadow: 0 0 5px rgba(143, 188, 143, 0.5);
+}
+
+.modal-form-columns {
+    display: flex;
+    gap: 2rem; /* Creates space between the two columns */
+    margin-bottom: 2rem;
+}
+
+.modal-form-column {
+    flex: 1; /* Each column takes up equal space */
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem; /* Space between form groups within a column */
+}
+
+/* Adjust textarea height for better balance */
+.modal-form .terminal-textarea {
+    min-height: 100px;
 }

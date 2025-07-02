@@ -20,16 +20,16 @@ const MODEL_OPTIONS = [
 ];
 
 function ImageFilter() {
-    // --- State Hooks ---
+    // All state and handlers remain the same...
     const [selectedFiles, setSelectedFiles] = useState([]);
-    
-    // Modal and Dataset State
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [datasetName, setDatasetName] = useState('');
     const [datasetType, setDatasetType] = useState('');
     const [datasetDescription, setDatasetDescription] = useState('');
-    
-    // Other existing state...
+    const [datasetClasses, setDatasetClasses] = useState(CLASS_NAMES.join(', '));
+    const [trainPath, setTrainPath] = useState('');
+    const [validPath, setValidPath] = useState('');
+    const [testPath, setTestPath] = useState('');
     const [searchQuery, setSearchQuery] = useState("");
     const [feeOption, setFeeOption] = useState("");
     const [mode, setMode] = useState("single");
@@ -42,9 +42,8 @@ function ImageFilter() {
     const [currentClassId, setCurrentClassId] = useState(0);
     const [selectedModel, setSelectedModel] = useState(null);
     const singleCanvasRef = useRef(null);
-    const fileInputRef = useRef(null); // <-- 1. ADD THIS REF
+    const fileInputRef = useRef(null);
 
-    // --- Handlers ---
     const handleFileChange = (e) => {
         setSelectedFiles(Array.from(e.target.files));
     };
@@ -54,6 +53,10 @@ function ImageFilter() {
             alert("Please select files before uploading.");
             return;
         }
+        const name = 'new-dataset';
+        setTrainPath(`/data/${name}/train`);
+        setValidPath(`/data/${name}/valid`);
+        setTestPath(`/data/${name}/test`);
         setIsModalOpen(true);
     };
 
@@ -61,10 +64,13 @@ function ImageFilter() {
         e.preventDefault();
         
         const formData = new FormData();
-
         formData.append('datasetName', datasetName);
         formData.append('datasetType', datasetType);
         formData.append('datasetDescription', datasetDescription);
+        formData.append('datasetClasses', datasetClasses);
+        formData.append('trainPath', trainPath);
+        formData.append('validPath', validPath);
+        formData.append('testPath', testPath);
 
         for (const file of selectedFiles) {
             formData.append("images", file);
@@ -87,9 +93,12 @@ function ImageFilter() {
             setDatasetName('');
             setDatasetType('');
             setDatasetDescription('');
+            setDatasetClasses(CLASS_NAMES.join(', '));
+            setTrainPath('');
+            setValidPath('');
+            setTestPath('');
             setIsModalOpen(false);
 
-            // 2. CLEAR THE FILE INPUT'S VALUE
             if(fileInputRef.current) {
                 fileInputRef.current.value = "";
             }
@@ -100,7 +109,6 @@ function ImageFilter() {
         }
     };
     
-    // ... all other handlers and useEffects remain the same
     const fetchImages = async () => {
         try {
             let endpoint = "";
@@ -275,19 +283,48 @@ function ImageFilter() {
         <div className="image-filter-container">
             <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)}>
                 <form onSubmit={handleConfirmUpload} className="modal-form">
-                    <h2 className="page-title">Create New Dataset</h2>
-                    <div className="form-group">
-                        <label htmlFor="datasetName">Dataset Name</label>
-                        <input id="datasetName" className="terminal-input" type="text" value={datasetName} onChange={(e) => setDatasetName(e.target.value)} placeholder="e.g., Road_Objects_Q3" required />
+                    <pre className="modal-header-art">
+                        {`+------------------------------------+\n| [Initialize New Dataset Sequence]  |\n+------------------------------------+`}
+                    </pre>
+
+                    <div className="modal-form-columns">
+                        {/* --- Column 1: Core Info --- */}
+                        <div className="modal-form-column">
+                            <div className="form-group">
+                                <label htmlFor="datasetName">Dataset Name</label>
+                                <input id="datasetName" className="terminal-input" type="text" value={datasetName} onChange={(e) => setDatasetName(e.target.value)} placeholder="e.g., Road_Objects_Q3" required />
+                            </div>
+                            <div className="form-group">
+                                <label htmlFor="datasetType">Dataset Type</label>
+                                <input id="datasetType" className="terminal-input" type="text" value={datasetType} onChange={(e) => setDatasetType(e.target.value)} placeholder="e.g., Object Detection" />
+                            </div>
+                            <div className="form-group">
+                                <label htmlFor="datasetDescription">Description</label>
+                                <textarea id="datasetDescription" className="terminal-textarea" value={datasetDescription} onChange={(e) => setDatasetDescription(e.target.value)} rows="5" placeholder="A short description of the dataset contents..."></textarea>
+                            </div>
+                        </div>
+
+                        {/* --- Column 2: Paths & Classes --- */}
+                        <div className="modal-form-column">
+                            <div className="form-group">
+                                <label htmlFor="datasetClasses">Classes</label>
+                                <textarea id="datasetClasses" className="terminal-textarea" value={datasetClasses} onChange={(e) => setDatasetClasses(e.target.value)} rows="5"></textarea>
+                            </div>
+                            <div className="form-group">
+                                <label htmlFor="trainPath">Train Data Path</label>
+                                <input id="trainPath" className="terminal-input" type="text" value={trainPath} onChange={(e) => setTrainPath(e.target.value)} placeholder="/path/to/train" />
+                            </div>
+                            <div className="form-group">
+                                <label htmlFor="validPath">Valid Data Path</label>
+                                <input id="validPath" className="terminal-input" type="text" value={validPath} onChange={(e) => setValidPath(e.target.value)} placeholder="/path/to/valid" />
+                            </div>
+                            <div className="form-group">
+                                <label htmlFor="testPath">Test Data Path</label>
+                                <input id="testPath" className="terminal-input" type="text" value={testPath} onChange={(e) => setTestPath(e.target.value)} placeholder="/path/to/test" />
+                            </div>
+                        </div>
                     </div>
-                    <div className="form-group">
-                        <label htmlFor="datasetType">Dataset Type</label>
-                        <input id="datasetType" className="terminal-input" type="text" value={datasetType} onChange={(e) => setDatasetType(e.target.value)} placeholder="e.g., Object Detection" />
-                    </div>
-                    <div className="form-group">
-                        <label htmlFor="datasetDescription">Description</label>
-                        <textarea id="datasetDescription" className="terminal-textarea" value={datasetDescription} onChange={(e) => setDatasetDescription(e.target.value)} rows="4" placeholder="A short description of the dataset contents..."></textarea>
-                    </div>
+                    
                     <button type="submit" className="terminal-button primary full-width">
                         Confirm & Upload {selectedFiles.length} File(s)
                     </button>
@@ -307,14 +344,13 @@ function ImageFilter() {
                             id="file-upload"
                             type="file"
                             multiple
-                            ref={fileInputRef} // <-- ASSIGN THE REF
+                            ref={fileInputRef} 
                             onChange={handleFileChange}
                             accept=".zip,image/*"
                         />
-                        {/* 3. DYNAMICALLY SET THE CLASSNAME */}
                         <button 
                             onClick={handleOpenUploadModal} 
-                            className={`terminal-button ${selectedFiles.length > 0 ? 'primary' : ''}`} 
+                            className="terminal-button primary"
                             disabled={selectedFiles.length === 0}
                         >
                             Upload
@@ -322,7 +358,6 @@ function ImageFilter() {
                     </div>
                 </fieldset>
                 
-                {/* ... other fieldsets ... */}
                  <fieldset className="control-group filter-search-panel">
                     <legend>FILTER & SEARCH</legend>
                     <form onSubmit={handleSearchSubmit}>
@@ -347,7 +382,6 @@ function ImageFilter() {
                 </fieldset>
             </div>
             
-            {/* ... rest of the component ... */}
             <fieldset className="class-selector-panel">
                 <legend>ANNOTATION CLASS</legend>
                 <div className="class-buttons-container">
@@ -522,4 +556,5 @@ function MultipleThumb({ image, classId, onDiscard, onUpdateImage }) {
         </div>
     );
 }
+
 export default ImageFilter;
