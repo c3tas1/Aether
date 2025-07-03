@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import Select from 'react-select';
 import Modal from './Modal';
 import FileTree from './FileTree';
@@ -30,16 +30,17 @@ function ImageFilter() {
     const [datasetName, setDatasetName] = useState('');
     const [datasetType, setDatasetType] = useState('');
     const [datasetDescription, setDatasetDescription] = useState('');
-    const [datasetClasses, setDatasetClasses] = useState(CLASS_NAMES.join(', '));
+    const [thumbnailFile, setThumbnailFile] = useState(null);
+    const [thumbnailPreview, setThumbnailPreview] = useState(null);
     
-    // Path selection state
-    const [activePathSelection, setActivePathSelection] = useState(null); // 'train', 'valid', or 'test'
-    const [trainPath, setTrainPath] = useState('');
-    const [validPath, setValidPath] = useState('');
-    const [testPath, setTestPath] = useState('');
+    const [trainData, setTrainData] = useState({ path: '', customJson: '' });
+    const [validData, setValidData] = useState({ path: '', customJson: '' });
+    const [testData, setTestData] = useState({ path: '', customJson: '' });
+    const [activePathSelection, setActivePathSelection] = useState(null);
+    const [jsonValidation, setJsonValidation] = useState({ train: true, valid: true, test: true });
 
     // Upload/Decompression State
-    const [modalView, setModalView] = useState('form'); // 'form', 'uploading', 'decompressing', 'complete'
+    const [modalView, setModalView] = useState('form');
     const [uploadProgress, setUploadProgress] = useState(0);
     const [decompressionProgress, setDecompressionProgress] = useState(0);
     const [fileTree, setFileTree] = useState(null);
@@ -69,6 +70,14 @@ function ImageFilter() {
         setSelectedFiles(Array.from(e.target.files));
     };
 
+    const handleThumbnailChange = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            setThumbnailFile(file);
+            setThumbnailPreview(URL.createObjectURL(file));
+        }
+    };
+
     const handleOpenUploadModal = () => {
         if (selectedFiles.length === 0) {
             alert("Please select files before uploading.");
@@ -80,19 +89,19 @@ function ImageFilter() {
 
     const handleCloseModal = () => {
         setIsModalOpen(false);
-        if (pollingIntervalRef.current) {
-            clearInterval(pollingIntervalRef.current);
-        }
+        if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
         setModalView('form');
         setFileTree(null);
         setActivePathSelection(null);
         setDatasetName('');
         setDatasetType('');
         setDatasetDescription('');
-        setDatasetClasses(CLASS_NAMES.join(', '));
-        setTrainPath('');
-        setValidPath('');
-        setTestPath('');
+        setThumbnailFile(null);
+        setThumbnailPreview(null);
+        setTrainData({ path: '', customJson: '' });
+        setValidData({ path: '', customJson: '' });
+        setTestData({ path: '', customJson: '' });
+        setJsonValidation({ train: true, valid: true, test: true });
     };
     
     const pollDecompressionStatus = (datasetId) => {
@@ -100,7 +109,6 @@ function ImageFilter() {
             try {
                 const res = await fetch(`${BASE_URL}/api/datasets/${datasetId}/status`);
                 const data = await res.json();
-
                 if (data.status === 'decompressing') {
                     setDecompressionProgress(data.progress);
                 } else if (data.status === 'complete') {
@@ -128,10 +136,11 @@ function ImageFilter() {
         formData.append('datasetType', datasetType);
         formData.append('datasetDescription', datasetDescription);
         formData.append("images", selectedFiles[0]);
-
+        if (thumbnailFile) {
+            formData.append("thumbnail", thumbnailFile);
+        }
         setModalView('uploading');
         setUploadProgress(0);
-
         const xhr = new XMLHttpRequest();
         xhr.upload.addEventListener("progress", (event) => {
             if (event.lengthComputable) {
@@ -157,45 +166,11 @@ function ImageFilter() {
         xhr.send(formData);
     };
     
-    const handlePreviewDataset = async () => {
-        if (!lastUploadedDatasetId) {
-            alert("Could not find the dataset ID.");
-            return;
-        }
-        try {
-            setSearchQuery("");
-            setFeeOption("");
-            setPage(1);
-            const res = await fetch(`${BASE_URL}/api/datasets/${lastUploadedDatasetId}/images`);
-            if (!res.ok) throw new Error("Failed to fetch dataset images.");
-            const data = await res.json();
-            const mapped = data.map(item => ({...item, dataUrl: "data:image/jpeg;base64," + item.base64}));
-            setImages(mapped);
-            setMode('multiple');
-            handleCloseModal();
-        } catch (err) {
-            console.error(err);
-            alert(err.message);
-        }
-    };
-
     const selectPathFor = (pathType) => {
         setActivePathSelection(pathType);
     };
 
-    const handleFileNodeClick = (node) => {
-        if (activePathSelection) {
-            const fullPath = node.path ? `${fileTree.name}/${node.path}` : fileTree.name;
-            if (activePathSelection === 'train') setTrainPath(fullPath);
-            else if (activePathSelection === 'valid') setValidPath(fullPath);
-            else if (activePathSelection === 'test') setTestPath(fullPath);
-            setActivePathSelection(null);
-        } else {
-            fetchAndShowPreview(node);
-        }
-    };
-
-    const fetchAndShowPreview = async (node) => {
+    const fetchAndShowPreview = useCallback(async (node) => {
         const fileExt = node.name.split('.').pop().toLowerCase();
         if (!['txt', 'png', 'jpg', 'jpeg'].includes(fileExt)) {
             alert("This file type cannot be previewed.");
@@ -211,28 +186,66 @@ function ImageFilter() {
             console.error(err);
             alert(err.message);
         }
-    };
-    
-    const handleSaveMetadata = async () => {
-        if (!lastUploadedDatasetId) {
-            alert("Cannot save, dataset ID is missing.");
+    }, [lastUploadedDatasetId]);
+
+    const handleFileNodeClick = useCallback((node) => {
+        if (activePathSelection) {
+            const fullPath = node.path ? `${fileTree.name}/${node.path}` : fileTree.name;
+            const pathSetters = { train: setTrainData, valid: setValidData, test: setTestData };
+            pathSetters[activePathSelection](prev => ({ ...prev, path: fullPath }));
+            setActivePathSelection(null);
+        } else {
+            fetchAndShowPreview(node);
+        }
+    }, [activePathSelection, fileTree, fetchAndShowPreview]);
+
+    const handleJsonChange = (pathType, value) => {
+        const setters = { train: setTrainData, valid: setValidData, test: setTestData };
+        setters[pathType](prev => ({ ...prev, customJson: value }));
+        if (value.trim() === '') {
+            setJsonValidation(prev => ({ ...prev, [pathType]: true }));
             return;
         }
         try {
+            JSON.parse(value);
+            setJsonValidation(prev => ({ ...prev, [pathType]: true }));
+        } catch (error) {
+            setJsonValidation(prev => ({ ...prev, [pathType]: false }));
+        }
+    };
+    
+    const handleSaveMetadata = async () => {
+        if (!lastUploadedDatasetId) return alert("Cannot save, dataset ID is missing.");
+        const { train, valid, test } = jsonValidation;
+        if (!train || !valid || !test) {
+            alert("One or more custom JSON fields are invalid. Please correct them before saving.");
+            return;
+        }
+        try {
+            const getJsonOrNull = (jsonString) => {
+                try { 
+                    if (jsonString.trim() === '') return null;
+                    return JSON.parse(jsonString); 
+                } catch { return null; }
+            };
+            const metadata = {
+                trainData: { path: trainData.path, customData: getJsonOrNull(trainData.customJson) },
+                validData: { path: validData.path, customData: getJsonOrNull(validData.customJson) },
+                testData: { path: testData.path, customData: getJsonOrNull(testData.customJson) }
+            };
             const res = await fetch(`${BASE_URL}/api/datasets/${lastUploadedDatasetId}/metadata`, {
                 method: "PUT",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ trainPath, validPath, testPath }),
+                body: JSON.stringify(metadata),
             });
             if (!res.ok) throw new Error("Failed to save metadata.");
             alert("Metadata saved successfully!");
         } catch (err) {
-            console.error(err);
-            alert(err.message);
+            console.error(err); alert(err.message);
         }
     };
 
-    const fetchImages = async () => {
+    const fetchImages = useCallback(async () => {
         try {
             let endpoint = "";
             if (mode === "single") {
@@ -254,36 +267,35 @@ function ImageFilter() {
             alert("Error loading images. Check console.");
             setImages([]);
         }
-    };
-
-    useEffect(() => {
-        if (searchQuery || feeOption) fetchImages();
     }, [mode, page, pageSize, feeOption, searchQuery]);
 
     useEffect(() => {
-        if (mode === "single") drawSingleBoxes();
-    }, [images, mode, currentIndex]);
-    
-    const drawSingleBoxes = () => {
-        if (mode !== "single") return;
+        if (searchQuery || feeOption) fetchImages();
+    }, [searchQuery, feeOption, fetchImages]);
+
+    const drawSingleBoxes = useCallback(() => {
+        if (mode !== "single" || !singleCanvasRef.current || images.length === 0) return;
         const canvas = singleCanvasRef.current;
-        if (!canvas) return;
         const ctx = canvas.getContext("2d");
         ctx.clearRect(0, 0, SINGLE_LOGICAL_WIDTH, SINGLE_LOGICAL_HEIGHT);
-
-        if (images.length === 0) return;
         const img = images[currentIndex];
         ctx.strokeStyle = "#00FF00";
         ctx.lineWidth = 2;
-        img.boxes.forEach((box) => {
-            ctx.strokeRect(box.x, box.y, box.w, box.h);
-            const label = CLASS_NAMES[box.classId] || `id=${box.classId}`;
-            ctx.fillStyle = "#00FF00";
-            ctx.font = "18px 'Fira Code', monospace";
-            ctx.fillText(label, box.x + 2, box.y + 18);
-        });
-    };
+        ctx.font = "18px 'Fira Code', monospace";
+        if(img && img.boxes) {
+            img.boxes.forEach((box) => {
+                ctx.strokeRect(box.x, box.y, box.w, box.h);
+                const label = CLASS_NAMES[box.classId] || `id=${box.classId}`;
+                ctx.fillStyle = "#00FF00";
+                ctx.fillText(label, box.x + 2, box.y + 18);
+            });
+        }
+    }, [mode, images, currentIndex]);
 
+    useEffect(() => {
+        if (mode === "single") drawSingleBoxes();
+    }, [images, mode, currentIndex, drawSingleBoxes]);
+    
     const handleSingleMouseDown = (e) => {
         setIsDrawing(true);
         const rect = e.currentTarget.getBoundingClientRect();
@@ -375,62 +387,37 @@ function ImageFilter() {
         switch (modalView) {
             case 'uploading':
             case 'decompressing':
-                return (
-                    <div className="progress-bar-container">
-                        <div className="progress-bar-label">
-                            {modalView === 'uploading' ? `Uploading... ${uploadProgress}%` : `Decompressing... ${decompressionProgress}%`}
-                        </div>
-                        <div className="progress-bar"><div className="progress-bar-fill" style={{ width: `${modalView === 'uploading' ? uploadProgress : decompressionProgress}%` }}></div></div>
-                    </div>
-                );
+                return ( <div className="progress-bar-container"><div className="progress-bar-label">{modalView === 'uploading' ? `Uploading... ${uploadProgress}%` : `Decompressing... ${decompressionProgress}%`}</div><div className="progress-bar"><div className="progress-bar-fill" style={{ width: `${modalView === 'uploading' ? uploadProgress : decompressionProgress}%` }}></div></div></div> );
+            
             case 'complete':
+                const pathData = { train: trainData, valid: validData, test: testData };
                 return (
                     <div className="dataset-info-panel">
                         <pre className="modal-header-art">{`+------------------------------------+\n| [Configure Dataset Paths]          |\n+------------------------------------+`}</pre>
                         <div className="modal-form-columns">
                             <div className="modal-form-column">
-                                <div className="file-tree-instructions">
-                                    {activePathSelection 
-                                        ? `Now click a file to set the ${activePathSelection} path...`
-                                        : 'Click a file to preview, or a "Set" button to assign a path.'
-                                    }
-                                </div>
-                                <div className="file-tree-container">
-                                    <FileTree 
-                                        node={fileTree} 
-                                        onFileNodeClick={handleFileNodeClick}
-                                        isRoot={true}
-                                    />
-                                </div>
+                                <div className="file-tree-instructions">{activePathSelection ? `Click a file to set the ${activePathSelection} path...` : 'Click a file to preview, or a "Set" button to assign a path.'}</div>
+                                <div className="file-tree-container"><FileTree node={fileTree} onFileNodeClick={handleFileNodeClick} isRoot={true} /></div>
                             </div>
                             <div className="modal-form-column path-selection-panel">
-                                <div className={`path-input-group ${activePathSelection === 'train' ? 'active-selection' : ''}`}>
-                                    <label>Train Data Path</label>
-                                    <div className="path-input-row">
-                                        <input className="terminal-input" type="text" value={trainPath} onChange={e => setTrainPath(e.target.value)} />
-                                        <button type="button" onClick={() => selectPathFor('train')} className={`terminal-button small ${activePathSelection === 'train' ? 'active' : ''}`}>Set</button>
+                                {['train', 'valid', 'test'].map(type => (
+                                    <div key={type} className={`path-input-group ${activePathSelection === type ? 'active-selection' : ''}`}>
+                                        <label>{type.charAt(0).toUpperCase() + type.slice(1)} Data Path</label>
+                                        <div className="path-input-row">
+                                            <input className="terminal-input" type="text" value={pathData[type].path} readOnly />
+                                            <button type="button" onClick={() => selectPathFor(type)} className={`terminal-button small ${activePathSelection === type ? 'active' : ''}`}>Set</button>
+                                        </div>
+                                        <div className="form-group">
+                                            <label>Custom Metadata (JSON)</label>
+                                            <textarea className={`terminal-textarea ${jsonValidation[type] ? '' : 'invalid'}`} rows="4" value={pathData[type].customJson} onChange={(e) => handleJsonChange(type, e.target.value)} placeholder={`{\n  "key": "value"\n}`}></textarea>
+                                        </div>
                                     </div>
-                                </div>
-                                <div className={`path-input-group ${activePathSelection === 'valid' ? 'active-selection' : ''}`}>
-                                    <label>Valid Data Path</label>
-                                    <div className="path-input-row">
-                                        <input className="terminal-input" type="text" value={validPath} onChange={e => setValidPath(e.target.value)} />
-                                        <button type="button" onClick={() => selectPathFor('valid')} className={`terminal-button small ${activePathSelection === 'valid' ? 'active' : ''}`}>Set</button>
-                                    </div>
-                                </div>
-                                <div className={`path-input-group ${activePathSelection === 'test' ? 'active-selection' : ''}`}>
-                                    <label>Test Data Path</label>
-                                    <div className="path-input-row">
-                                        <input className="terminal-input" type="text" value={testPath} onChange={e => setTestPath(e.target.value)} />
-                                        <button type="button" onClick={() => selectPathFor('test')} className={`terminal-button small ${activePathSelection === 'test' ? 'active' : ''}`}>Set</button>
-                                    </div>
-                                </div>
+                                ))}
                             </div>
                         </div>
                         <div className="info-panel-actions">
                             <button onClick={handleSaveMetadata} className="terminal-button primary">Save Metadata</button>
-                            <button onClick={handlePreviewDataset} className="terminal-button">Preview in Annotator</button>
-                            <button onClick={handleCloseModal} className="terminal-button">Done</button>
+                            <button onClick={handleCloseModal} className="terminal-button">Close</button>
                         </div>
                     </div>
                 );
@@ -439,25 +426,36 @@ function ImageFilter() {
                 return (
                     <form onSubmit={handleConfirmUpload} className="modal-form">
                         <pre className="modal-header-art">{`+------------------------------------+\n| [Initialize New Dataset Sequence]  |\n+------------------------------------+`}</pre>
-                        <div className="modal-form-columns">
-                            <div className="modal-form-column">
-                                <div className="form-group"><label htmlFor="datasetName">Dataset Name</label><input id="datasetName" className="terminal-input" type="text" value={datasetName} onChange={(e) => setDatasetName(e.target.value)} placeholder="e.g., Road_Objects_Q3" required /></div>
-                                <div className="form-group"><label htmlFor="datasetType">Dataset Type</label><input id="datasetType" className="terminal-input" type="text" value={datasetType} onChange={(e) => setDatasetType(e.target.value)} placeholder="e.g., Object Detection" /></div>
-                                <div className="form-group"><label htmlFor="datasetDescription">Description</label><textarea id="datasetDescription" className="terminal-textarea" value={datasetDescription} onChange={(e) => setDatasetDescription(e.target.value)} rows="5" placeholder="A short description..."></textarea></div>
+                        <div className="form-section-header">// Core Config</div>
+                        <div className="form-group-inline">
+                            <div className="form-group">
+                                <label htmlFor="datasetName">Dataset Name</label>
+                                <input id="datasetName" className="terminal-input" type="text" value={datasetName} onChange={(e) => setDatasetName(e.target.value)} placeholder="e.g., Road_Objects_Q3" required />
                             </div>
-                            <div className="modal-form-column">
-                                <div className="form-group"><label htmlFor="datasetClasses">Classes</label><textarea id="datasetClasses" className="terminal-textarea" value={datasetClasses} onChange={(e) => setDatasetClasses(e.target.value)} rows="5"></textarea></div>
-                                <div className="form-group"><label htmlFor="trainPath">Train Data Path</label><input id="trainPath" className="terminal-input" type="text" value={trainPath} onChange={(e) => setTrainPath(e.target.value)} placeholder="/path/to/train" /></div>
-                                <div className="form-group"><label htmlFor="validPath">Valid Data Path</label><input id="validPath" className="terminal-input" type="text" value={validPath} onChange={(e) => setValidPath(e.target.value)} placeholder="/path/to/valid" /></div>
-                                <div className="form-group"><label htmlFor="testPath">Test Data Path</label><input id="testPath" className="terminal-input" type="text" value={testPath} onChange={(e) => setTestPath(e.target.value)} placeholder="/path/to/test" /></div>
+                            <div className="form-group">
+                                <label htmlFor="datasetType">Dataset Type</label>
+                                <input id="datasetType" className="terminal-input" type="text" value={datasetType} onChange={(e) => setDatasetType(e.target.value)} placeholder="e.g., Object Detection" />
                             </div>
+                        </div>
+                        <div className="form-group thumbnail-group">
+                            <label>Dataset Thumbnail (Optional)</label>
+                            <label htmlFor="thumbnail-upload" className="terminal-button">
+                                {thumbnailFile ? `Selected: ${thumbnailFile.name}` : 'Select Thumbnail'}
+                            </label>
+                            <input id="thumbnail-upload" type="file" onChange={handleThumbnailChange} accept="image/png, image/jpeg" style={{ display: 'none' }}/>
+                            {thumbnailPreview && <div className="thumbnail-preview"><img src={thumbnailPreview} alt="Thumbnail preview" /></div>}
+                        </div>
+                        <div className="form-section-header">// Details</div>
+                        <div className="form-group">
+                            <label htmlFor="datasetDescription">Description</label>
+                            <textarea id="datasetDescription" className="terminal-textarea" value={datasetDescription} onChange={(e) => setDatasetDescription(e.target.value)} rows="4" placeholder="A short description of the dataset contents..."></textarea>
                         </div>
                         <button type="submit" className="terminal-button primary full-width">Confirm & Upload</button>
                     </form>
                 );
         }
     };
-
+    
     return (
         <div className="image-filter-container">
             <Modal isOpen={isModalOpen} onClose={handleCloseModal}>{renderModalContent()}</Modal>
@@ -465,16 +463,11 @@ function ImageFilter() {
                 <div className="preview-panel">
                     <h3 className="preview-title">{previewContent.name}</h3>
                     <div className="preview-content">
-                        {previewContent.type === 'image' && (
-                            <img src={`data:image/jpeg;base64,${previewContent.content}`} alt="File preview" />
-                        )}
-                        {previewContent.type === 'text' && (
-                            <pre>{previewContent.content}</pre>
-                        )}
+                        {previewContent.type === 'image' && <img src={`data:image/jpeg;base64,${previewContent.content}`} alt="File preview" />}
+                        {previewContent.type === 'text' && <pre>{previewContent.content}</pre>}
                     </div>
                 </div>
             </Modal>
-            
             <h1 className="page-title">{'// ANNOTATION_INTERFACE'}</h1>
             <div className="controls-grid">
                 <fieldset className="control-group">
@@ -538,11 +531,7 @@ function ImageFilter() {
                             <div className="multiple-mode-grid">
                                 {images.map((img, idx) => (
                                     <MultipleThumb key={img.id} image={img} classId={currentClassId} onDiscard={() => handleDiscard(img)} onUpdateImage={(updated) => {
-                                        setImages((prev) => {
-                                            const copy = [...prev];
-                                            copy[idx] = updated;
-                                            return copy;
-                                        });
+                                        setImages((prev) => { const copy = [...prev]; copy[idx] = updated; return copy; });
                                     }} />
                                 ))}
                             </div>
@@ -572,23 +561,25 @@ function MultipleThumb({ image, classId, onDiscard, onUpdateImage }) {
     const [isDrawing, setIsDrawing] = useState(false);
     const [startPt, setStartPt] = useState(null);
 
-    useEffect(() => { drawBoxes(); }, [image.boxes]);
-
-    const drawBoxes = () => {
+    const drawBoxes = useCallback(() => {
         const canvas = canvasRef.current;
         if (!canvas) return;
         const ctx = canvas.getContext("2d");
         ctx.clearRect(0, 0, MULTIPLE_LOGICAL_WIDTH, MULTIPLE_LOGICAL_HEIGHT);
         ctx.strokeStyle = "#00FF00";
         ctx.lineWidth = 1;
-        image.boxes.forEach((b) => {
-            ctx.strokeRect(b.x, b.y, b.w, b.h);
-            const label = CLASS_NAMES[b.classId] || `?`;
-            ctx.fillStyle = "#00FF00";
-            ctx.font = "12px 'Fira Code', monospace";
-            ctx.fillText(label, b.x + 2, b.y + 12);
-        });
-    };
+        if(image.boxes) {
+            image.boxes.forEach((b) => {
+                ctx.strokeRect(b.x, b.y, b.w, b.h);
+                const label = CLASS_NAMES[b.classId] || `?`;
+                ctx.fillStyle = "#00FF00";
+                ctx.font = "12px 'Fira Code', monospace";
+                ctx.fillText(label, b.x + 2, b.y + 12);
+            });
+        }
+    }, [image.boxes]);
+
+    useEffect(() => { drawBoxes(); }, [drawBoxes]);
 
     const handleMouseDown = (e) => {
         setIsDrawing(true);
