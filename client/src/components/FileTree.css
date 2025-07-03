@@ -29,3 +29,14 @@
     border-left: 1px dashed rgba(143, 188, 143, 0.3);
     margin-left: 16px;
 }
+
+/* Add this to your FileTree.css */
+
+.node-item.active {
+    background-color: #8FBC8F;
+    color: #0D0D0D;
+}
+
+.node-item.active .node-icon {
+    color: #0D0D0D;
+}

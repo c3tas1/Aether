@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import './FileTree.css'; // We will create this file next
+import './FileTree.css';
 
 const FileIcon = () => (
   <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
@@ -17,8 +17,9 @@ const FolderIcon = ({ isOpen }) => (
   </svg>
 );
 
-const FileTree = ({ node }) => {
-    const [isOpen, setIsOpen] = useState(false);
+const FileTree = ({ node, onFileClick, activePath, isRoot = false }) => {
+    // MODIFICATION: Root is open by default, children are closed.
+    const [isOpen, setIsOpen] = useState(isRoot);
 
     if (!node) {
         return null;
@@ -26,15 +27,25 @@ const FileTree = ({ node }) => {
 
     const isFolder = node.type === 'folder';
 
-    const handleToggle = () => {
+    const handleClick = () => {
         if (isFolder) {
             setIsOpen(!isOpen);
+        } else {
+            if (onFileClick) {
+                onFileClick(node.path);
+            }
         }
     };
 
+    const relativeActivePath = activePath.substring(activePath.indexOf('/') + 1);
+    const isActive = !isFolder && relativeActivePath === node.path;
+
     return (
         <div className="file-tree-node">
-            <div className={`node-item ${isFolder ? 'folder' : 'file'}`} onClick={handleToggle}>
+            <div 
+                className={`node-item ${isFolder ? 'folder' : 'file'} ${isActive ? 'active' : ''}`} 
+                onClick={handleClick}
+            >
                 <span className="node-icon">
                     {isFolder ? <FolderIcon isOpen={isOpen} /> : <FileIcon />}
                 </span>
@@ -43,7 +54,12 @@ const FileTree = ({ node }) => {
             {isFolder && isOpen && (
                 <div className="node-children">
                     {node.children && node.children.map((childNode, index) => (
-                        <FileTree key={index} node={childNode} />
+                        <FileTree 
+                            key={index} 
+                            node={childNode} 
+                            onFileClick={onFileClick}
+                            activePath={activePath}
+                        />
                     ))}
                 </div>
             )}

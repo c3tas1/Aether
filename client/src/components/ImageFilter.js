@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import Select from 'react-select';
 import Modal from './Modal';
-import FileTree from './FileTree'; // Make sure you have created FileTree.js
+import FileTree from './FileTree';
 import './ImageFilter.css';
 
 // Constants
@@ -31,11 +31,14 @@ function ImageFilter() {
     const [datasetType, setDatasetType] = useState('');
     const [datasetDescription, setDatasetDescription] = useState('');
     const [datasetClasses, setDatasetClasses] = useState(CLASS_NAMES.join(', '));
+    
+    // Path selection state
+    const [activePathSelection, setActivePathSelection] = useState(null); // 'train', 'valid', or 'test'
     const [trainPath, setTrainPath] = useState('');
     const [validPath, setValidPath] = useState('');
     const [testPath, setTestPath] = useState('');
 
-    // State for upload/decompression progress and completion
+    // Upload/Decompression State
     const [modalView, setModalView] = useState('form'); // 'form', 'uploading', 'decompressing', 'complete'
     const [uploadProgress, setUploadProgress] = useState(0);
     const [decompressionProgress, setDecompressionProgress] = useState(0);
@@ -77,6 +80,9 @@ function ImageFilter() {
             clearInterval(pollingIntervalRef.current);
         }
         // Reset all modal-related state
+        setModalView('form');
+        setFileTree(null);
+        setActivePathSelection(null);
         setDatasetName('');
         setDatasetType('');
         setDatasetDescription('');
@@ -85,7 +91,7 @@ function ImageFilter() {
         setValidPath('');
         setTestPath('');
     };
-
+    
     const pollDecompressionStatus = (datasetId) => {
         pollingIntervalRef.current = setInterval(async () => {
             try {
@@ -103,7 +109,7 @@ function ImageFilter() {
                 } else if (data.status === 'failed') {
                     clearInterval(pollingIntervalRef.current);
                     alert('Decompression failed on the server.');
-                    setModalView('form'); // Or a new 'error' view
+                    setModalView('form');
                 }
             } catch (error) {
                 console.error("Polling error:", error);
@@ -112,13 +118,13 @@ function ImageFilter() {
         }, 2000);
     };
 
-    const handleConfirmUpload = async (e) => {
+    const handleConfirmUpload = (e) => {
         e.preventDefault();
         const formData = new FormData();
         formData.append('datasetName', datasetName);
         formData.append('datasetType', datasetType);
         formData.append('datasetDescription', datasetDescription);
-        formData.append("images", selectedFiles[0]); // Assuming one zip file
+        formData.append("images", selectedFiles[0]);
 
         setModalView('uploading');
         setUploadProgress(0);
@@ -175,7 +181,47 @@ function ImageFilter() {
             alert(err.message);
         }
     };
-    
+
+    const selectPathFor = (pathType) => {
+        setActivePathSelection(pathType);
+    };
+
+    const handleFileSelect = (filePath) => {
+        if (!activePathSelection) {
+            alert("Please click a 'Set' button first to choose which path to assign.");
+            return;
+        }
+        
+        const fullPath = `${fileTree.name}/${filePath}`;
+
+        if (activePathSelection === 'train') setTrainPath(fullPath);
+        else if (activePathSelection === 'valid') setValidPath(fullPath);
+        else if (activePathSelection === 'test') setTestPath(fullPath);
+        
+        setActivePathSelection(null);
+    };
+
+    const handleSaveMetadata = async () => {
+        if (!lastUploadedDatasetId) {
+            alert("Cannot save, dataset ID is missing.");
+            return;
+        }
+        try {
+            const res = await fetch(`${BASE_URL}/api/datasets/${lastUploadedDatasetId}/metadata`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ trainPath, validPath, testPath }),
+            });
+            if (!res.ok) {
+                throw new Error("Failed to save metadata.");
+            }
+            alert("Metadata saved successfully!");
+        } catch (err) {
+            console.error(err);
+            alert(err.message);
+        }
+    };
+
     const fetchImages = async () => {
         try {
             let endpoint = "";
@@ -185,16 +231,11 @@ function ImageFilter() {
                 endpoint = `${BASE_URL}/api/images/multiple?search=${searchQuery}&fee=${feeOption}&page=${page}&limit=${pageSize}`;
             }
             const res = await fetch(endpoint);
-            if (!res.ok) {
-                throw new Error("Fetch error " + res.status);
-            }
+            if (!res.ok) throw new Error("Fetch error " + res.status);
             const data = await res.json();
             const mapped = (Array.isArray(data) ? data : []).map((item) => ({
-                id: item.id,
-                filename: item.filename,
-                dataUrl: "data:image/jpeg;base64," + item.base64,
-                status: item.status || "",
-                boxes: item.boxes || [],
+                id: item.id, filename: item.filename, dataUrl: "data:image/jpeg;base64," + item.base64,
+                status: item.status || "", boxes: item.boxes || [],
             }));
             setImages(mapped);
             setCurrentIndex(0);
@@ -206,15 +247,11 @@ function ImageFilter() {
     };
 
     useEffect(() => {
-        if (searchQuery || feeOption) {
-            fetchImages();
-        }
+        if (searchQuery || feeOption) fetchImages();
     }, [mode, page, pageSize, feeOption, searchQuery]);
 
     useEffect(() => {
-        if (mode === "single") {
-            drawSingleBoxes();
-        }
+        if (mode === "single") drawSingleBoxes();
     }, [images, mode, currentIndex]);
     
     const drawSingleBoxes = () => {
@@ -327,28 +364,62 @@ function ImageFilter() {
     const renderModalContent = () => {
         switch (modalView) {
             case 'uploading':
-                return (
-                    <div className="progress-bar-container">
-                        <div className="progress-bar-label">Uploading... {uploadProgress}%</div>
-                        <div className="progress-bar"><div className="progress-bar-fill" style={{ width: `${uploadProgress}%` }}></div></div>
-                    </div>
-                );
             case 'decompressing':
                 return (
                     <div className="progress-bar-container">
-                        <div className="progress-bar-label">Decompressing on server... {decompressionProgress}%</div>
-                        <div className="progress-bar"><div className="progress-bar-fill" style={{ width: `${decompressionProgress}%` }}></div></div>
+                        <div className="progress-bar-label">
+                            {modalView === 'uploading' ? `Uploading... ${uploadProgress}%` : `Decompressing... ${decompressionProgress}%`}
+                        </div>
+                        <div className="progress-bar">
+                            <div className="progress-bar-fill" style={{ width: `${modalView === 'uploading' ? uploadProgress : decompressionProgress}%` }}></div>
+                        </div>
                     </div>
                 );
             case 'complete':
                 return (
                     <div className="dataset-info-panel">
-                        <pre className="modal-header-art">{`+------------------------------------+\n| [Decompression Complete]           |\n+------------------------------------+`}</pre>
-                        <div className="file-tree-container">
-                            <FileTree node={fileTree} />
+                        <pre className="modal-header-art">{`+------------------------------------+\n| [Configure Dataset Paths]          |\n+------------------------------------+`}</pre>
+                        <div className="modal-form-columns">
+                            <div className="modal-form-column">
+                                <div className="file-tree-instructions">
+                                    Click a "Set" button, then click a file below.
+                                </div>
+                                <div className="file-tree-container">
+                                    <FileTree 
+                                        node={fileTree} 
+                                        onFileClick={handleFileSelect}
+                                        activePath={ (activePathSelection === 'train' && trainPath) || (activePathSelection === 'valid' && validPath) || (activePathSelection === 'test' && testPath) || '' }
+                                        isRoot={true}
+                                    />
+                                </div>
+                            </div>
+                            <div className="modal-form-column path-selection-panel">
+                                <div className={`path-input-group ${activePathSelection === 'train' ? 'active-selection' : ''}`}>
+                                    <label>Train Data Path</label>
+                                    <div className="path-input-row">
+                                        <input className="terminal-input" type="text" value={trainPath} onChange={e => setTrainPath(e.target.value)} />
+                                        <button type="button" onClick={() => selectPathFor('train')} className={`terminal-button small ${activePathSelection === 'train' ? 'active' : ''}`}>Set</button>
+                                    </div>
+                                </div>
+                                <div className={`path-input-group ${activePathSelection === 'valid' ? 'active-selection' : ''}`}>
+                                    <label>Valid Data Path</label>
+                                    <div className="path-input-row">
+                                        <input className="terminal-input" type="text" value={validPath} onChange={e => setValidPath(e.target.value)} />
+                                        <button type="button" onClick={() => selectPathFor('valid')} className={`terminal-button small ${activePathSelection === 'valid' ? 'active' : ''}`}>Set</button>
+                                    </div>
+                                </div>
+                                <div className={`path-input-group ${activePathSelection === 'test' ? 'active-selection' : ''}`}>
+                                    <label>Test Data Path</label>
+                                    <div className="path-input-row">
+                                        <input className="terminal-input" type="text" value={testPath} onChange={e => setTestPath(e.target.value)} />
+                                        <button type="button" onClick={() => selectPathFor('test')} className={`terminal-button small ${activePathSelection === 'test' ? 'active' : ''}`}>Set</button>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                         <div className="info-panel-actions">
-                            <button onClick={handlePreviewDataset} className="terminal-button primary">Preview Dataset</button>
+                            <button onClick={handleSaveMetadata} className="terminal-button primary">Save Metadata</button>
+                            <button onClick={handlePreviewDataset} className="terminal-button">Preview Dataset</button>
                             <button onClick={handleCloseModal} className="terminal-button">Done</button>
                         </div>
                     </div>

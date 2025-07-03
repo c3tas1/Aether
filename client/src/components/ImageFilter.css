@@ -429,3 +429,62 @@ input[type="file"] {
     padding: 1rem;
     border-radius: 4px;
 }
+
+/* Add these styles to ImageFilter.css */
+.path-input-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.path-input-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.path-input-row .terminal-input {
+    flex-grow: 1;
+}
+
+/* Add these styles to ImageFilter.css */
+
+.path-input-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 1rem;
+    border: 1px solid transparent; /* Add border for transition */
+    border-radius: 4px;
+    transition: all 0.3s ease;
+}
+
+/* New style to highlight the whole active group */
+.path-input-group.active-selection {
+    border-color: #8FBC8F;
+    box-shadow: 0 0 10px rgba(143, 188, 143, 0.3);
+}
+.path-input-group.active-selection label {
+    color: #DCDCDC;
+}
+
+
+.path-input-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.path-input-row .terminal-input {
+    flex-grow: 1;
+}
+
+/* Styling for the instruction box */
+.file-tree-instructions {
+    padding: 0.75rem;
+    border: 1px dashed rgba(143, 188, 143, 0.4);
+    border-radius: 4px;
+    margin-bottom: 1rem;
+    color: #aaa;
+    text-align: center;
+}
