@@ -1,0 +1,31 @@
+.file-tree-node {
+    font-family: 'Fira Code', monospace;
+    color: #DCDCDC;
+    font-size: 0.9rem;
+}
+
+.node-item {
+    display: flex;
+    align-items: center;
+    padding: 4px 8px;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: background-color 0.2s ease;
+}
+
+.node-item:hover {
+    background-color: rgba(143, 188, 143, 0.1);
+}
+
+.node-icon {
+    margin-right: 8px;
+    display: inline-flex;
+    align-items: center;
+    color: #8FBC8F;
+}
+
+.node-children {
+    padding-left: 20px;
+    border-left: 1px dashed rgba(143, 188, 143, 0.3);
+    margin-left: 16px;
+}

@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from "react";
 import Select from 'react-select';
 import Modal from './Modal';
+import FileTree from './FileTree'; // Make sure you have created FileTree.js
 import './ImageFilter.css';
 
-// Constants remain the same...
+// Constants
 const BASE_URL = "http://127.0.0.1:5000";
 const SINGLE_LOGICAL_WIDTH = 1200;
 const SINGLE_LOGICAL_HEIGHT = 1600;
@@ -20,8 +21,11 @@ const MODEL_OPTIONS = [
 ];
 
 function ImageFilter() {
-    // All state and handlers remain the same...
+    // --- State Hooks ---
     const [selectedFiles, setSelectedFiles] = useState([]);
+    const [lastUploadedDatasetId, setLastUploadedDatasetId] = useState(null);
+    
+    // Modal and Dataset State
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [datasetName, setDatasetName] = useState('');
     const [datasetType, setDatasetType] = useState('');
@@ -30,6 +34,14 @@ function ImageFilter() {
     const [trainPath, setTrainPath] = useState('');
     const [validPath, setValidPath] = useState('');
     const [testPath, setTestPath] = useState('');
+
+    // State for upload/decompression progress and completion
+    const [modalView, setModalView] = useState('form'); // 'form', 'uploading', 'decompressing', 'complete'
+    const [uploadProgress, setUploadProgress] = useState(0);
+    const [decompressionProgress, setDecompressionProgress] = useState(0);
+    const [fileTree, setFileTree] = useState(null);
+    
+    // Other existing state...
     const [searchQuery, setSearchQuery] = useState("");
     const [feeOption, setFeeOption] = useState("");
     const [mode, setMode] = useState("single");
@@ -43,7 +55,9 @@ function ImageFilter() {
     const [selectedModel, setSelectedModel] = useState(null);
     const singleCanvasRef = useRef(null);
     const fileInputRef = useRef(null);
+    const pollingIntervalRef = useRef(null);
 
+    // --- Handlers ---
     const handleFileChange = (e) => {
         setSelectedFiles(Array.from(e.target.files));
     };
@@ -53,59 +67,112 @@ function ImageFilter() {
             alert("Please select files before uploading.");
             return;
         }
-        const name = 'new-dataset';
-        setTrainPath(`/data/${name}/train`);
-        setValidPath(`/data/${name}/valid`);
-        setTestPath(`/data/${name}/test`);
+        setModalView('form');
         setIsModalOpen(true);
+    };
+
+    const handleCloseModal = () => {
+        setIsModalOpen(false);
+        if (pollingIntervalRef.current) {
+            clearInterval(pollingIntervalRef.current);
+        }
+        // Reset all modal-related state
+        setDatasetName('');
+        setDatasetType('');
+        setDatasetDescription('');
+        setDatasetClasses(CLASS_NAMES.join(', '));
+        setTrainPath('');
+        setValidPath('');
+        setTestPath('');
+    };
+
+    const pollDecompressionStatus = (datasetId) => {
+        pollingIntervalRef.current = setInterval(async () => {
+            try {
+                const res = await fetch(`${BASE_URL}/api/datasets/${datasetId}/status`);
+                const data = await res.json();
+
+                if (data.status === 'decompressing') {
+                    setDecompressionProgress(data.progress);
+                } else if (data.status === 'complete') {
+                    clearInterval(pollingIntervalRef.current);
+                    const treeRes = await fetch(`${BASE_URL}/api/datasets/${datasetId}/file_tree`);
+                    const treeData = await treeRes.json();
+                    setFileTree(treeData);
+                    setModalView('complete');
+                } else if (data.status === 'failed') {
+                    clearInterval(pollingIntervalRef.current);
+                    alert('Decompression failed on the server.');
+                    setModalView('form'); // Or a new 'error' view
+                }
+            } catch (error) {
+                console.error("Polling error:", error);
+                clearInterval(pollingIntervalRef.current);
+            }
+        }, 2000);
     };
 
     const handleConfirmUpload = async (e) => {
         e.preventDefault();
-        
         const formData = new FormData();
         formData.append('datasetName', datasetName);
         formData.append('datasetType', datasetType);
         formData.append('datasetDescription', datasetDescription);
-        formData.append('datasetClasses', datasetClasses);
-        formData.append('trainPath', trainPath);
-        formData.append('validPath', validPath);
-        formData.append('testPath', testPath);
+        formData.append("images", selectedFiles[0]); // Assuming one zip file
 
-        for (const file of selectedFiles) {
-            formData.append("images", file);
+        setModalView('uploading');
+        setUploadProgress(0);
+
+        const xhr = new XMLHttpRequest();
+        xhr.upload.addEventListener("progress", (event) => {
+            if (event.lengthComputable) {
+                setUploadProgress(Math.round((event.loaded / event.total) * 100));
+            }
+        });
+
+        xhr.addEventListener("load", () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+                const result = JSON.parse(xhr.responseText);
+                setLastUploadedDatasetId(result.dataset_id);
+                setModalView('decompressing');
+                pollDecompressionStatus(result.dataset_id);
+            } else {
+                alert(`Upload failed: ${xhr.statusText}`);
+                setModalView('form');
+            }
+        });
+        xhr.addEventListener("error", () => {
+            alert("An error occurred during the upload.");
+            setModalView('form');
+        });
+        xhr.open("POST", `${BASE_URL}/api/upload`);
+        xhr.send(formData);
+    };
+    
+    const handlePreviewDataset = async () => {
+        if (!lastUploadedDatasetId) {
+            alert("Could not find the dataset ID.");
+            return;
         }
-
         try {
-            const res = await fetch(`${BASE_URL}/api/upload`, {
-                method: "POST",
-                body: formData,
-            });
-            if (!res.ok) {
-                const errData = await res.json();
-                throw new Error(errData.error || `Upload error ${res.status}`);
-            }
-            const result = await res.json();
-            console.log("Upload result:", result);
-            alert(result.message || "Upload successful");
-            
-            setSelectedFiles([]);
-            setDatasetName('');
-            setDatasetType('');
-            setDatasetDescription('');
-            setDatasetClasses(CLASS_NAMES.join(', '));
-            setTrainPath('');
-            setValidPath('');
-            setTestPath('');
-            setIsModalOpen(false);
+            setSearchQuery("");
+            setFeeOption("");
+            setPage(1);
 
-            if(fileInputRef.current) {
-                fileInputRef.current.value = "";
+            const res = await fetch(`${BASE_URL}/api/datasets/${lastUploadedDatasetId}/images`);
+            if (!res.ok) {
+                throw new Error("Failed to fetch dataset images.");
             }
+            const data = await res.json();
+            const mapped = data.map(item => ({...item, dataUrl: "data:image/jpeg;base64," + item.base64}));
+
+            setImages(mapped);
+            setMode('multiple');
+            handleCloseModal();
 
         } catch (err) {
-            console.error("Upload error:", err);
-            alert(`Upload failed: ${err.message}`);
+            console.error(err);
+            alert(err.message);
         }
     };
     
@@ -142,14 +209,14 @@ function ImageFilter() {
         if (searchQuery || feeOption) {
             fetchImages();
         }
-    }, [mode, page, pageSize, feeOption]);
+    }, [mode, page, pageSize, feeOption, searchQuery]);
 
     useEffect(() => {
         if (mode === "single") {
             drawSingleBoxes();
         }
     }, [images, mode, currentIndex]);
-
+    
     const drawSingleBoxes = () => {
         if (mode !== "single") return;
         const canvas = singleCanvasRef.current;
@@ -159,7 +226,7 @@ function ImageFilter() {
 
         if (images.length === 0) return;
         const img = images[currentIndex];
-        ctx.strokeStyle = "#00FF00"; // Bright green for visibility
+        ctx.strokeStyle = "#00FF00";
         ctx.lineWidth = 2;
         img.boxes.forEach((box) => {
             ctx.strokeRect(box.x, box.y, box.w, box.h);
@@ -175,7 +242,6 @@ function ImageFilter() {
         const rect = e.currentTarget.getBoundingClientRect();
         const scaleX = SINGLE_LOGICAL_WIDTH / rect.width;
         const scaleY = SINGLE_LOGICAL_HEIGHT / rect.height;
-
         const sx = (e.clientX - rect.left) * scaleX;
         const sy = (e.clientY - rect.top) * scaleY;
         setStartPt({ x: sx, y: sy });
@@ -184,14 +250,11 @@ function ImageFilter() {
     const handleSingleMouseMove = (e) => {
         if (!isDrawing) return;
         drawSingleBoxes();
-
         const rect = e.currentTarget.getBoundingClientRect();
         const scaleX = SINGLE_LOGICAL_WIDTH / rect.width;
         const scaleY = SINGLE_LOGICAL_HEIGHT / rect.height;
-
         const mx = (e.clientX - rect.left) * scaleX;
         const my = (e.clientY - rect.top) * scaleY;
-
         const canvas = singleCanvasRef.current;
         const ctx = canvas.getContext("2d");
         ctx.strokeStyle = "yellow";
@@ -202,23 +265,14 @@ function ImageFilter() {
     const handleSingleMouseUp = (e) => {
         if (!isDrawing) return;
         setIsDrawing(false);
-
         const rect = e.currentTarget.getBoundingClientRect();
         const scaleX = SINGLE_LOGICAL_WIDTH / rect.width;
         const scaleY = SINGLE_LOGICAL_HEIGHT / rect.height;
-
         const mx = (e.clientX - rect.left) * scaleX;
         const my = (e.clientY - rect.top) * scaleY;
         const w = mx - startPt.x;
         const h = my - startPt.y;
-
-        const newBox = {
-            classId: currentClassId,
-            x: startPt.x,
-            y: startPt.y,
-            w,
-            h,
-        };
+        const newBox = { classId: currentClassId, x: startPt.x, y: startPt.y, w, h };
         const copy = [...images];
         copy[currentIndex].boxes.push(newBox);
         setImages(copy);
@@ -229,13 +283,8 @@ function ImageFilter() {
         if (images.length === 0) return;
         const img = images[currentIndex];
         try {
-            const body = {
-                boxes: img.boxes,
-                imageWidth: SINGLE_LOGICAL_WIDTH,
-                imageHeight: SINGLE_LOGICAL_HEIGHT,
-            };
-            const annUrl = `${BASE_URL}/api/annotations/${img.filename}`;
-            const res = await fetch(annUrl, {
+            const body = { boxes: img.boxes, imageWidth: SINGLE_LOGICAL_WIDTH, imageHeight: SINGLE_LOGICAL_HEIGHT };
+            const res = await fetch(`${BASE_URL}/api/annotations/${img.filename}`, {
                 method: "PUT",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(body),
@@ -251,22 +300,18 @@ function ImageFilter() {
     const handlePrevImage = () => {
         setCurrentIndex((i) => (i === 0 ? images.length - 1 : i - 1));
     };
+    
     const handleNextImage = () => {
         setCurrentIndex((i) => (i === images.length - 1 ? 0 : i + 1));
     };
 
     const handleDiscard = async (img) => {
         try {
-            const discardUrl = `${BASE_URL}/api/images/${img.id}/discard`;
-            const res = await fetch(discardUrl, {
-                method: "PUT",
-            });
+            const res = await fetch(`${BASE_URL}/api/images/${img.id}/discard`, { method: "PUT" });
             if (!res.ok) throw new Error("Discard error " + res.status);
             const result = await res.json();
             alert("Discarded image_id: " + result.image_id);
-            setImages((prev) =>
-                prev.map((x) => (x.id === img.id ? { ...x, status: "discarded" } : x))
-            );
+            setImages((prev) => prev.map((x) => (x.id === img.id ? { ...x, status: "discarded" } : x)));
         } catch (err) {
             console.error("Discard error:", err);
             alert("Discard failed. See console.");
@@ -279,86 +324,73 @@ function ImageFilter() {
         fetchImages();
     };
 
-    return (
-        <div className="image-filter-container">
-            <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)}>
-                <form onSubmit={handleConfirmUpload} className="modal-form">
-                    <pre className="modal-header-art">
-                        {`+------------------------------------+\n| [Initialize New Dataset Sequence]  |\n+------------------------------------+`}
-                    </pre>
-
-                    <div className="modal-form-columns">
-                        {/* --- Column 1: Core Info --- */}
-                        <div className="modal-form-column">
-                            <div className="form-group">
-                                <label htmlFor="datasetName">Dataset Name</label>
-                                <input id="datasetName" className="terminal-input" type="text" value={datasetName} onChange={(e) => setDatasetName(e.target.value)} placeholder="e.g., Road_Objects_Q3" required />
-                            </div>
-                            <div className="form-group">
-                                <label htmlFor="datasetType">Dataset Type</label>
-                                <input id="datasetType" className="terminal-input" type="text" value={datasetType} onChange={(e) => setDatasetType(e.target.value)} placeholder="e.g., Object Detection" />
-                            </div>
-                            <div className="form-group">
-                                <label htmlFor="datasetDescription">Description</label>
-                                <textarea id="datasetDescription" className="terminal-textarea" value={datasetDescription} onChange={(e) => setDatasetDescription(e.target.value)} rows="5" placeholder="A short description of the dataset contents..."></textarea>
-                            </div>
+    const renderModalContent = () => {
+        switch (modalView) {
+            case 'uploading':
+                return (
+                    <div className="progress-bar-container">
+                        <div className="progress-bar-label">Uploading... {uploadProgress}%</div>
+                        <div className="progress-bar"><div className="progress-bar-fill" style={{ width: `${uploadProgress}%` }}></div></div>
+                    </div>
+                );
+            case 'decompressing':
+                return (
+                    <div className="progress-bar-container">
+                        <div className="progress-bar-label">Decompressing on server... {decompressionProgress}%</div>
+                        <div className="progress-bar"><div className="progress-bar-fill" style={{ width: `${decompressionProgress}%` }}></div></div>
+                    </div>
+                );
+            case 'complete':
+                return (
+                    <div className="dataset-info-panel">
+                        <pre className="modal-header-art">{`+------------------------------------+\n| [Decompression Complete]           |\n+------------------------------------+`}</pre>
+                        <div className="file-tree-container">
+                            <FileTree node={fileTree} />
                         </div>
-
-                        {/* --- Column 2: Paths & Classes --- */}
-                        <div className="modal-form-column">
-                            <div className="form-group">
-                                <label htmlFor="datasetClasses">Classes</label>
-                                <textarea id="datasetClasses" className="terminal-textarea" value={datasetClasses} onChange={(e) => setDatasetClasses(e.target.value)} rows="5"></textarea>
-                            </div>
-                            <div className="form-group">
-                                <label htmlFor="trainPath">Train Data Path</label>
-                                <input id="trainPath" className="terminal-input" type="text" value={trainPath} onChange={(e) => setTrainPath(e.target.value)} placeholder="/path/to/train" />
-                            </div>
-                            <div className="form-group">
-                                <label htmlFor="validPath">Valid Data Path</label>
-                                <input id="validPath" className="terminal-input" type="text" value={validPath} onChange={(e) => setValidPath(e.target.value)} placeholder="/path/to/valid" />
-                            </div>
-                            <div className="form-group">
-                                <label htmlFor="testPath">Test Data Path</label>
-                                <input id="testPath" className="terminal-input" type="text" value={testPath} onChange={(e) => setTestPath(e.target.value)} placeholder="/path/to/test" />
-                            </div>
+                        <div className="info-panel-actions">
+                            <button onClick={handlePreviewDataset} className="terminal-button primary">Preview Dataset</button>
+                            <button onClick={handleCloseModal} className="terminal-button">Done</button>
                         </div>
                     </div>
-                    
-                    <button type="submit" className="terminal-button primary full-width">
-                        Confirm & Upload {selectedFiles.length} File(s)
-                    </button>
-                </form>
-            </Modal>
+                );
+            case 'form':
+            default:
+                return (
+                    <form onSubmit={handleConfirmUpload} className="modal-form">
+                        <pre className="modal-header-art">{`+------------------------------------+\n| [Initialize New Dataset Sequence]  |\n+------------------------------------+`}</pre>
+                        <div className="modal-form-columns">
+                            <div className="modal-form-column">
+                                <div className="form-group"><label htmlFor="datasetName">Dataset Name</label><input id="datasetName" className="terminal-input" type="text" value={datasetName} onChange={(e) => setDatasetName(e.target.value)} placeholder="e.g., Road_Objects_Q3" required /></div>
+                                <div className="form-group"><label htmlFor="datasetType">Dataset Type</label><input id="datasetType" className="terminal-input" type="text" value={datasetType} onChange={(e) => setDatasetType(e.target.value)} placeholder="e.g., Object Detection" /></div>
+                                <div className="form-group"><label htmlFor="datasetDescription">Description</label><textarea id="datasetDescription" className="terminal-textarea" value={datasetDescription} onChange={(e) => setDatasetDescription(e.target.value)} rows="5" placeholder="A short description..."></textarea></div>
+                            </div>
+                            <div className="modal-form-column">
+                                <div className="form-group"><label htmlFor="datasetClasses">Classes</label><textarea id="datasetClasses" className="terminal-textarea" value={datasetClasses} onChange={(e) => setDatasetClasses(e.target.value)} rows="5"></textarea></div>
+                                <div className="form-group"><label htmlFor="trainPath">Train Data Path</label><input id="trainPath" className="terminal-input" type="text" value={trainPath} onChange={(e) => setTrainPath(e.target.value)} placeholder="/path/to/train" /></div>
+                                <div className="form-group"><label htmlFor="validPath">Valid Data Path</label><input id="validPath" className="terminal-input" type="text" value={validPath} onChange={(e) => setValidPath(e.target.value)} placeholder="/path/to/valid" /></div>
+                                <div className="form-group"><label htmlFor="testPath">Test Data Path</label><input id="testPath" className="terminal-input" type="text" value={testPath} onChange={(e) => setTestPath(e.target.value)} placeholder="/path/to/test" /></div>
+                            </div>
+                        </div>
+                        <button type="submit" className="terminal-button primary full-width">Confirm & Upload</button>
+                    </form>
+                );
+        }
+    };
 
+    return (
+        <div className="image-filter-container">
+            <Modal isOpen={isModalOpen} onClose={handleCloseModal}>{renderModalContent()}</Modal>
             <h1 className="page-title">{'// ANNOTATION_INTERFACE'}</h1>
-
             <div className="controls-grid">
                 <fieldset className="control-group">
                     <legend>DATA INPUT</legend>
                     <div className="data-input-form">
-                        <label htmlFor="file-upload" className="terminal-button">
-                            {selectedFiles.length > 0 ? `${selectedFiles.length} files selected` : 'SELECT FILES'}
-                        </label>
-                        <input
-                            id="file-upload"
-                            type="file"
-                            multiple
-                            ref={fileInputRef} 
-                            onChange={handleFileChange}
-                            accept=".zip,image/*"
-                        />
-                        <button 
-                            onClick={handleOpenUploadModal} 
-                            className="terminal-button primary"
-                            disabled={selectedFiles.length === 0}
-                        >
-                            Upload
-                        </button>
+                        <label htmlFor="file-upload" className="terminal-button">{selectedFiles.length > 0 ? `${selectedFiles.length} files selected` : 'SELECT FILES'}</label>
+                        <input id="file-upload" type="file" multiple ref={fileInputRef} onChange={handleFileChange} accept=".zip,image/*" />
+                        <button onClick={handleOpenUploadModal} className="terminal-button primary" disabled={selectedFiles.length === 0}>Upload</button>
                     </div>
                 </fieldset>
-                
-                 <fieldset className="control-group filter-search-panel">
+                <fieldset className="control-group filter-search-panel">
                     <legend>FILTER & SEARCH</legend>
                     <form onSubmit={handleSearchSubmit}>
                         <input className="terminal-input" placeholder="Search datasets or files..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
@@ -381,18 +413,11 @@ function ImageFilter() {
                     <Select className="react-select-container" classNamePrefix="react-select" options={MODEL_OPTIONS} value={selectedModel} onChange={setSelectedModel} placeholder="Select a model..." isSearchable />
                 </fieldset>
             </div>
-            
             <fieldset className="class-selector-panel">
                 <legend>ANNOTATION CLASS</legend>
                 <div className="class-buttons-container">
                     {CLASS_NAMES.map((name, idx) => (
-                        <button
-                            key={idx}
-                            className={`terminal-button ${currentClassId === idx ? 'active' : ''}`}
-                            onClick={() => setCurrentClassId(idx)}
-                        >
-                            {name}
-                        </button>
+                        <button key={idx} className={`terminal-button ${currentClassId === idx ? 'active' : ''}`} onClick={() => setCurrentClassId(idx)}>{name}</button>
                     ))}
                 </div>
             </fieldset>
@@ -429,10 +454,7 @@ function ImageFilter() {
                         ) : (<p className="status-text">No images found for multiple mode.</p>)}
                         <div className="action-bar">
                             <label>Images per page:</label>
-                            <select className="terminal-select" value={pageSize} onChange={(e) => {
-                                setPageSize(Number(e.target.value));
-                                setPage(1);
-                            }}>
+                            <select className="terminal-select" value={pageSize} onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}>
                                 <option value={25}>25</option>
                                 <option value={50}>50</option>
                                 <option value={100}>100</option>
@@ -449,14 +471,13 @@ function ImageFilter() {
         </div>
     );
 }
+
 function MultipleThumb({ image, classId, onDiscard, onUpdateImage }) {
     const canvasRef = useRef(null);
     const [isDrawing, setIsDrawing] = useState(false);
     const [startPt, setStartPt] = useState(null);
 
-    useEffect(() => {
-        drawBoxes();
-    }, [image.boxes]);
+    useEffect(() => { drawBoxes(); }, [image.boxes]);
 
     const drawBoxes = () => {
         const canvas = canvasRef.current;
@@ -508,13 +529,7 @@ function MultipleThumb({ image, classId, onDiscard, onUpdateImage }) {
         const my = (e.clientY - rect.top) * scaleY;
         const w = mx - startPt.x;
         const h = my - startPt.y;
-        const newBox = {
-            classId,
-            x: startPt.x,
-            y: startPt.y,
-            w,
-            h,
-        };
+        const newBox = { classId, x: startPt.x, y: startPt.y, w, h };
         const updated = { ...image, boxes: [...image.boxes, newBox] };
         onUpdateImage(updated);
         setStartPt(null);
@@ -522,13 +537,8 @@ function MultipleThumb({ image, classId, onDiscard, onUpdateImage }) {
 
     const handleSave = async () => {
         try {
-            const body = {
-                boxes: image.boxes,
-                imageWidth: MULTIPLE_LOGICAL_WIDTH,
-                imageHeight: MULTIPLE_LOGICAL_HEIGHT,
-            };
-            const annUrl = `${BASE_URL}/api/annotations/${image.filename}`;
-            const res = await fetch(annUrl, {
+            const body = { boxes: image.boxes, imageWidth: MULTIPLE_LOGICAL_WIDTH, imageHeight: MULTIPLE_LOGICAL_HEIGHT };
+            const res = await fetch(`${BASE_URL}/api/annotations/${image.filename}`, {
                 method: "PUT",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(body),
