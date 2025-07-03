@@ -23,21 +23,21 @@ const MODEL_OPTIONS = [
 function ImageFilter() {
     // --- State Hooks ---
     const [selectedFiles, setSelectedFiles] = useState([]);
-    const [lastUploadedDatasetId, setLastUploadedDatasetId] = useState(null);
+    const [lastUploadedStoragePath, setLastUploadedStoragePath] = useState(null);
     
     // Modal and Dataset State
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [datasetName, setDatasetName] = useState('');
     const [datasetType, setDatasetType] = useState('');
     const [datasetDescription, setDatasetDescription] = useState('');
+    const [classNames, setClassNames] = useState(CLASS_NAMES.join(', '));
     const [thumbnailFile, setThumbnailFile] = useState(null);
     const [thumbnailPreview, setThumbnailPreview] = useState(null);
     
-    const [trainData, setTrainData] = useState({ path: '', customJson: '' });
-    const [validData, setValidData] = useState({ path: '', customJson: '' });
-    const [testData, setTestData] = useState({ path: '', customJson: '' });
+    // State for the single metadata JSON field
+    const [metadataJson, setMetadataJson] = useState('');
     const [activePathSelection, setActivePathSelection] = useState(null);
-    const [jsonValidation, setJsonValidation] = useState({ train: true, valid: true, test: true });
+    const [isMetadataJsonValid, setIsMetadataJsonValid] = useState(true);
 
     // Upload/Decompression State
     const [modalView, setModalView] = useState('form');
@@ -96,26 +96,37 @@ function ImageFilter() {
         setDatasetName('');
         setDatasetType('');
         setDatasetDescription('');
+        setClassNames(CLASS_NAMES.join(', '));
         setThumbnailFile(null);
         setThumbnailPreview(null);
-        setTrainData({ path: '', customJson: '' });
-        setValidData({ path: '', customJson: '' });
-        setTestData({ path: '', customJson: '' });
-        setJsonValidation({ train: true, valid: true, test: true });
+        setMetadataJson('');
+        setIsMetadataJsonValid(true);
     };
     
-    const pollDecompressionStatus = (datasetId) => {
+    const pollDecompressionStatus = (storagePath) => {
         pollingIntervalRef.current = setInterval(async () => {
             try {
-                const res = await fetch(`${BASE_URL}/api/datasets/${datasetId}/status`);
+                const res = await fetch(`${BASE_URL}/api/datasets/${storagePath}/status`);
                 const data = await res.json();
                 if (data.status === 'decompressing') {
                     setDecompressionProgress(data.progress);
                 } else if (data.status === 'complete') {
                     clearInterval(pollingIntervalRef.current);
-                    const treeRes = await fetch(`${BASE_URL}/api/datasets/${datasetId}/file_tree`);
+                    const treeRes = await fetch(`${BASE_URL}/api/datasets/${storagePath}/file_tree`);
                     const treeData = await treeRes.json();
                     setFileTree(treeData);
+                    const defaultMetadata = {
+                        datasetName: datasetName,
+                        datasetType: datasetType,
+                        classNames: classNames.split(',').map(s => s.trim()),
+                        trainDataRoot: "",
+                        validDataRoot: "",
+                        testDataRoot: "",
+                        trainDataMeta: {},
+                        validDataMeta: {},
+                        testDataMeta: {}
+                    };
+                    setMetadataJson(JSON.stringify(defaultMetadata, null, 4));
                     setModalView('complete');
                 } else if (data.status === 'failed') {
                     clearInterval(pollingIntervalRef.current);
@@ -135,24 +146,22 @@ function ImageFilter() {
         formData.append('datasetName', datasetName);
         formData.append('datasetType', datasetType);
         formData.append('datasetDescription', datasetDescription);
+        formData.append('classNames', classNames);
         formData.append("images", selectedFiles[0]);
-        if (thumbnailFile) {
-            formData.append("thumbnail", thumbnailFile);
-        }
+        if (thumbnailFile) formData.append("thumbnail", thumbnailFile);
+        
         setModalView('uploading');
         setUploadProgress(0);
         const xhr = new XMLHttpRequest();
         xhr.upload.addEventListener("progress", (event) => {
-            if (event.lengthComputable) {
-                setUploadProgress(Math.round((event.loaded / event.total) * 100));
-            }
+            if (event.lengthComputable) setUploadProgress(Math.round((event.loaded / event.total) * 100));
         });
         xhr.addEventListener("load", () => {
             if (xhr.status >= 200 && xhr.status < 300) {
                 const result = JSON.parse(xhr.responseText);
-                setLastUploadedDatasetId(result.dataset_id);
+                setLastUploadedStoragePath(result.storage_path);
                 setModalView('decompressing');
-                pollDecompressionStatus(result.dataset_id);
+                pollDecompressionStatus(result.storage_path);
             } else {
                 alert(`Upload failed: ${xhr.statusText}`);
                 setModalView('form');
@@ -166,80 +175,65 @@ function ImageFilter() {
         xhr.send(formData);
     };
     
-    const selectPathFor = (pathType) => {
-        setActivePathSelection(pathType);
-    };
+    const selectPathFor = (pathKey) => setActivePathSelection(pathKey);
 
     const fetchAndShowPreview = useCallback(async (node) => {
         const fileExt = node.name.split('.').pop().toLowerCase();
-        if (!['txt', 'png', 'jpg', 'jpeg'].includes(fileExt)) {
-            alert("This file type cannot be previewed.");
-            return;
-        }
+        if (!['txt', 'xml', 'png', 'jpg', 'jpeg'].includes(fileExt)) return;
         try {
-            const res = await fetch(`${BASE_URL}/api/datasets/${lastUploadedDatasetId}/preview?path=${node.path}`);
+            const res = await fetch(`${BASE_URL}/api/datasets/${lastUploadedStoragePath}/preview?path=${node.path}`);
             if (!res.ok) throw new Error("Could not fetch file content.");
             const data = await res.json();
             setPreviewContent({ ...data, name: node.name });
             setIsPreviewModalOpen(true);
         } catch (err) {
-            console.error(err);
-            alert(err.message);
+            console.error(err); alert(err.message);
         }
-    }, [lastUploadedDatasetId]);
+    }, [lastUploadedStoragePath]);
 
-    const handleFileNodeClick = useCallback((node) => {
+    const handleNodeClick = useCallback((node) => {
         if (activePathSelection) {
-            const fullPath = node.path ? `${fileTree.name}/${node.path}` : fileTree.name;
-            const pathSetters = { train: setTrainData, valid: setValidData, test: setTestData };
-            pathSetters[activePathSelection](prev => ({ ...prev, path: fullPath }));
+            try {
+                const currentMetadata = JSON.parse(metadataJson);
+                const fullPath = node.path ? `${fileTree.name}/${node.path}` : fileTree.name;
+                
+                let keys = activePathSelection.split('.');
+                let temp = currentMetadata;
+                for (let i = 0; i < keys.length - 1; i++) temp = temp[keys[i]];
+                temp[keys[keys.length - 1]] = fullPath;
+                
+                setMetadataJson(JSON.stringify(currentMetadata, null, 4));
+            } catch (error) {
+                alert("Cannot set path: current metadata is not valid JSON.");
+            }
             setActivePathSelection(null);
-        } else {
+        } else if (node.type === 'file') {
             fetchAndShowPreview(node);
         }
-    }, [activePathSelection, fileTree, fetchAndShowPreview]);
+    }, [activePathSelection, fileTree, metadataJson, fetchAndShowPreview]);
 
-    const handleJsonChange = (pathType, value) => {
-        const setters = { train: setTrainData, valid: setValidData, test: setTestData };
-        setters[pathType](prev => ({ ...prev, customJson: value }));
-        if (value.trim() === '') {
-            setJsonValidation(prev => ({ ...prev, [pathType]: true }));
-            return;
-        }
+    const handleJsonChange = (value) => {
+        setMetadataJson(value);
         try {
             JSON.parse(value);
-            setJsonValidation(prev => ({ ...prev, [pathType]: true }));
+            setIsMetadataJsonValid(true);
         } catch (error) {
-            setJsonValidation(prev => ({ ...prev, [pathType]: false }));
+            setIsMetadataJsonValid(false);
         }
     };
     
     const handleSaveMetadata = async () => {
-        if (!lastUploadedDatasetId) return alert("Cannot save, dataset ID is missing.");
-        const { train, valid, test } = jsonValidation;
-        if (!train || !valid || !test) {
-            alert("One or more custom JSON fields are invalid. Please correct them before saving.");
-            return;
-        }
+        if (!lastUploadedStoragePath) return alert("Cannot save, dataset path is missing.");
+        if (!isMetadataJsonValid) return alert("Cannot save: Metadata contains invalid JSON.");
         try {
-            const getJsonOrNull = (jsonString) => {
-                try { 
-                    if (jsonString.trim() === '') return null;
-                    return JSON.parse(jsonString); 
-                } catch { return null; }
-            };
-            const metadata = {
-                trainData: { path: trainData.path, customData: getJsonOrNull(trainData.customJson) },
-                validData: { path: validData.path, customData: getJsonOrNull(validData.customJson) },
-                testData: { path: testData.path, customData: getJsonOrNull(testData.customJson) }
-            };
-            const res = await fetch(`${BASE_URL}/api/datasets/${lastUploadedDatasetId}/metadata`, {
+            const res = await fetch(`${BASE_URL}/api/datasets/${lastUploadedStoragePath}/metadata`, {
                 method: "PUT",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(metadata),
+                body: metadataJson,
             });
             if (!res.ok) throw new Error("Failed to save metadata.");
             alert("Metadata saved successfully!");
+            handleCloseModal();
         } catch (err) {
             console.error(err); alert(err.message);
         }
@@ -247,31 +241,25 @@ function ImageFilter() {
 
     const fetchImages = useCallback(async () => {
         try {
-            let endpoint = "";
-            if (mode === "single") {
-                endpoint = `${BASE_URL}/api/images/single?search=${searchQuery}&fee=${feeOption}&page=${page}&per_page=${pageSize}`;
-            } else {
-                endpoint = `${BASE_URL}/api/images/multiple?search=${searchQuery}&fee=${feeOption}&page=${page}&limit=${pageSize}`;
-            }
+            const endpoint = `${BASE_URL}/api/images?search=${searchQuery}`;
             const res = await fetch(endpoint);
             if (!res.ok) throw new Error("Fetch error " + res.status);
             const data = await res.json();
             const mapped = (Array.isArray(data) ? data : []).map((item) => ({
-                id: item.id, filename: item.filename, dataUrl: "data:image/jpeg;base64," + item.base64,
-                status: item.status || "", boxes: item.boxes || [],
+                id: item.id, filename: item.filename, dataUrl: `data:image/jpeg;base64,${item.base64}`,
+                status: item.status || "", boxes: [],
             }));
             setImages(mapped);
             setCurrentIndex(0);
         } catch (err) {
             console.error("Fetch images error:", err);
-            alert("Error loading images. Check console.");
             setImages([]);
         }
-    }, [mode, page, pageSize, feeOption, searchQuery]);
+    }, [searchQuery]);
 
     useEffect(() => {
-        if (searchQuery || feeOption) fetchImages();
-    }, [searchQuery, feeOption, fetchImages]);
+        fetchImages();
+    }, [fetchImages]);
 
     const drawSingleBoxes = useCallback(() => {
         if (mode !== "single" || !singleCanvasRef.current || images.length === 0) return;
@@ -279,10 +267,11 @@ function ImageFilter() {
         const ctx = canvas.getContext("2d");
         ctx.clearRect(0, 0, SINGLE_LOGICAL_WIDTH, SINGLE_LOGICAL_HEIGHT);
         const img = images[currentIndex];
+        if (!img) return;
         ctx.strokeStyle = "#00FF00";
         ctx.lineWidth = 2;
         ctx.font = "18px 'Fira Code', monospace";
-        if(img && img.boxes) {
+        if(img.boxes) {
             img.boxes.forEach((box) => {
                 ctx.strokeRect(box.x, box.y, box.w, box.h);
                 const label = CLASS_NAMES[box.classId] || `id=${box.classId}`;
@@ -307,7 +296,7 @@ function ImageFilter() {
     };
 
     const handleSingleMouseMove = (e) => {
-        if (!isDrawing) return;
+        if (!isDrawing || !startPt) return;
         drawSingleBoxes();
         const rect = e.currentTarget.getBoundingClientRect();
         const scaleX = SINGLE_LOGICAL_WIDTH / rect.width;
@@ -322,7 +311,7 @@ function ImageFilter() {
     };
 
     const handleSingleMouseUp = (e) => {
-        if (!isDrawing) return;
+        if (!isDrawing || !startPt) return;
         setIsDrawing(false);
         const rect = e.currentTarget.getBoundingClientRect();
         const scaleX = SINGLE_LOGICAL_WIDTH / rect.width;
@@ -331,8 +320,10 @@ function ImageFilter() {
         const my = (e.clientY - rect.top) * scaleY;
         const w = mx - startPt.x;
         const h = my - startPt.y;
+        if (Math.abs(w) < 1 || Math.abs(h) < 1) return;
         const newBox = { classId: currentClassId, x: startPt.x, y: startPt.y, w, h };
         const copy = [...images];
+        if (!copy[currentIndex].boxes) copy[currentIndex].boxes = [];
         copy[currentIndex].boxes.push(newBox);
         setImages(copy);
         setStartPt(null);
@@ -356,30 +347,24 @@ function ImageFilter() {
         }
     };
 
-    const handlePrevImage = () => {
-        setCurrentIndex((i) => (i === 0 ? images.length - 1 : i - 1));
-    };
+    const handlePrevImage = () => setCurrentIndex((i) => (i === 0 ? images.length - 1 : i - 1));
+    const handleNextImage = () => setCurrentIndex((i) => (i === images.length - 1 ? 0 : i + 1));
     
-    const handleNextImage = () => {
-        setCurrentIndex((i) => (i === images.length - 1 ? 0 : i + 1));
-    };
-
     const handleDiscard = async (img) => {
         try {
             const res = await fetch(`${BASE_URL}/api/images/${img.id}/discard`, { method: "PUT" });
             if (!res.ok) throw new Error("Discard error " + res.status);
             const result = await res.json();
             alert("Discarded image_id: " + result.image_id);
-            setImages((prev) => prev.map((x) => (x.id === img.id ? { ...x, status: "discarded" } : x)));
+            setImages((prev) => prev.filter((x) => x.id !== img.id));
         } catch (err) {
             console.error("Discard error:", err);
             alert("Discard failed. See console.");
         }
     };
-
+    
     const handleSearchSubmit = (e) => {
         e.preventDefault();
-        setPage(1);
         fetchImages();
     };
 
@@ -390,29 +375,24 @@ function ImageFilter() {
                 return ( <div className="progress-bar-container"><div className="progress-bar-label">{modalView === 'uploading' ? `Uploading... ${uploadProgress}%` : `Decompressing... ${decompressionProgress}%`}</div><div className="progress-bar"><div className="progress-bar-fill" style={{ width: `${modalView === 'uploading' ? uploadProgress : decompressionProgress}%` }}></div></div></div> );
             
             case 'complete':
-                const pathData = { train: trainData, valid: validData, test: testData };
                 return (
                     <div className="dataset-info-panel">
-                        <pre className="modal-header-art">{`+------------------------------------+\n| [Configure Dataset Paths]          |\n+------------------------------------+`}</pre>
+                        <pre className="modal-header-art">{`+------------------------------------+\n| [Configure Dataset Metadata]       |\n+------------------------------------+`}</pre>
                         <div className="modal-form-columns">
                             <div className="modal-form-column">
-                                <div className="file-tree-instructions">{activePathSelection ? `Click a file to set the ${activePathSelection} path...` : 'Click a file to preview, or a "Set" button to assign a path.'}</div>
-                                <div className="file-tree-container"><FileTree node={fileTree} onFileNodeClick={handleFileNodeClick} isRoot={true} /></div>
+                                <div className="file-tree-instructions">{activePathSelection ? `Click a file/folder to set the ${activePathSelection}...` : 'Click a file/folder to preview or set a path.'}</div>
+                                <div className="file-tree-container"><FileTree node={fileTree} onNodeClick={handleNodeClick} isRoot={true}/></div>
                             </div>
                             <div className="modal-form-column path-selection-panel">
-                                {['train', 'valid', 'test'].map(type => (
-                                    <div key={type} className={`path-input-group ${activePathSelection === type ? 'active-selection' : ''}`}>
-                                        <label>{type.charAt(0).toUpperCase() + type.slice(1)} Data Path</label>
-                                        <div className="path-input-row">
-                                            <input className="terminal-input" type="text" value={pathData[type].path} readOnly />
-                                            <button type="button" onClick={() => selectPathFor(type)} className={`terminal-button small ${activePathSelection === type ? 'active' : ''}`}>Set</button>
-                                        </div>
-                                        <div className="form-group">
-                                            <label>Custom Metadata (JSON)</label>
-                                            <textarea className={`terminal-textarea ${jsonValidation[type] ? '' : 'invalid'}`} rows="4" value={pathData[type].customJson} onChange={(e) => handleJsonChange(type, e.target.value)} placeholder={`{\n  "key": "value"\n}`}></textarea>
-                                        </div>
-                                    </div>
-                                ))}
+                                <div className="form-group">
+                                    <label>Metadata Configuration (JSON)</label>
+                                    <textarea className={`terminal-textarea json-input ${isMetadataJsonValid ? '' : 'invalid'}`} rows="18" value={metadataJson} onChange={(e) => handleJsonChange(e.target.value)}></textarea>
+                                </div>
+                                <div className="path-set-buttons">
+                                    <button type="button" onClick={() => selectPathFor('trainDataRoot')} className={`terminal-button small ${activePathSelection === 'trainDataRoot' ? 'active' : ''}`}>Set Train Root</button>
+                                    <button type="button" onClick={() => selectPathFor('validDataRoot')} className={`terminal-button small ${activePathSelection === 'validDataRoot' ? 'active' : ''}`}>Set Valid Root</button>
+                                    <button type="button" onClick={() => selectPathFor('testDataRoot')} className={`terminal-button small ${activePathSelection === 'testDataRoot' ? 'active' : ''}`}>Set Test Root</button>
+                                </div>
                             </div>
                         </div>
                         <div className="info-panel-actions">
@@ -428,28 +408,18 @@ function ImageFilter() {
                         <pre className="modal-header-art">{`+------------------------------------+\n| [Initialize New Dataset Sequence]  |\n+------------------------------------+`}</pre>
                         <div className="form-section-header">// Core Config</div>
                         <div className="form-group-inline">
-                            <div className="form-group">
-                                <label htmlFor="datasetName">Dataset Name</label>
-                                <input id="datasetName" className="terminal-input" type="text" value={datasetName} onChange={(e) => setDatasetName(e.target.value)} placeholder="e.g., Road_Objects_Q3" required />
-                            </div>
-                            <div className="form-group">
-                                <label htmlFor="datasetType">Dataset Type</label>
-                                <input id="datasetType" className="terminal-input" type="text" value={datasetType} onChange={(e) => setDatasetType(e.target.value)} placeholder="e.g., Object Detection" />
-                            </div>
+                            <div className="form-group"><label htmlFor="datasetName">Dataset Name</label><input id="datasetName" className="terminal-input" type="text" value={datasetName} onChange={(e) => setDatasetName(e.target.value)} placeholder="e.g., Road_Objects_Q3" required /></div>
+                            <div className="form-group"><label htmlFor="datasetType">Dataset Type</label><input id="datasetType" className="terminal-input" type="text" value={datasetType} onChange={(e) => setDatasetType(e.target.value)} placeholder="e.g., Object Detection" /></div>
                         </div>
                         <div className="form-group thumbnail-group">
                             <label>Dataset Thumbnail (Optional)</label>
-                            <label htmlFor="thumbnail-upload" className="terminal-button">
-                                {thumbnailFile ? `Selected: ${thumbnailFile.name}` : 'Select Thumbnail'}
-                            </label>
+                            <label htmlFor="thumbnail-upload" className="terminal-button">{thumbnailFile ? `Selected: ${thumbnailFile.name}` : 'Select Thumbnail'}</label>
                             <input id="thumbnail-upload" type="file" onChange={handleThumbnailChange} accept="image/png, image/jpeg" style={{ display: 'none' }}/>
                             {thumbnailPreview && <div className="thumbnail-preview"><img src={thumbnailPreview} alt="Thumbnail preview" /></div>}
                         </div>
                         <div className="form-section-header">// Details</div>
-                        <div className="form-group">
-                            <label htmlFor="datasetDescription">Description</label>
-                            <textarea id="datasetDescription" className="terminal-textarea" value={datasetDescription} onChange={(e) => setDatasetDescription(e.target.value)} rows="4" placeholder="A short description of the dataset contents..."></textarea>
-                        </div>
+                        <div className="form-group"><label htmlFor="datasetDescription">Description</label><textarea id="datasetDescription" className="terminal-textarea" value={datasetDescription} onChange={(e) => setDatasetDescription(e.target.value)} rows="4" placeholder="A short description..."></textarea></div>
+                        <div className="form-group"><label htmlFor="classNames">Class Names (comma-separated)</label><textarea id="classNames" className="terminal-textarea" value={classNames} onChange={(e) => setClassNames(e.target.value)} rows="4"></textarea></div>
                         <button type="submit" className="terminal-button primary full-width">Confirm & Upload</button>
                     </form>
                 );
