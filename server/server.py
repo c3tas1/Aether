@@ -189,6 +189,44 @@ def save_dataset_metadata(dataset_id):
         print(f"Error saving metadata for dataset {dataset_id}: {e}")
         return jsonify({"error": str(e)}), 500
 
+@app.route("/api/datasets/<int:dataset_id>/preview", methods=["GET"])
+def preview_dataset_file(dataset_id):
+    """
+    Returns the content of a specific file within a dataset's extracted folder.
+    """
+    file_path_relative = request.args.get('path')
+    if not file_path_relative:
+        return jsonify({"error": "File path is required"}), 400
+
+    try:
+        base_dir = os.path.abspath(os.path.join(app.config["UPLOAD_FOLDER"], str(dataset_id)))
+        full_path = os.path.abspath(os.path.join(base_dir, file_path_relative))
+
+        # Security check: Ensure the requested path is within the base directory
+        if not full_path.startswith(base_dir):
+            return jsonify({"error": "Access denied: Traversal attempt detected"}), 403
+        
+        if not os.path.exists(full_path) or not os.path.isfile(full_path):
+            return jsonify({"error": "File not found"}), 404
+
+        file_ext = os.path.splitext(full_path)[1].lower()
+
+        if file_ext in ['.png', '.jpg', '.jpeg', '.gif']:
+            with open(full_path, "rb") as f:
+                b64_str = base64.b64encode(f.read()).decode("utf-8")
+            return jsonify({'type': 'image', 'content': b64_str})
+        
+        elif file_ext == '.txt':
+            with open(full_path, "r", encoding='utf-8', errors='ignore') as f:
+                content = f.read()
+            return jsonify({'type': 'text', 'content': content})
+        
+        else:
+            return jsonify({"error": f"Preview not supported for {file_ext} files"}), 400
+
+    except Exception as e:
+        print(f"Error previewing file for dataset {dataset_id}: {e}")
+        return jsonify({"error": str(e)}), 500
 
 # ---------- Init & Run ----------
 if __name__ == "__main__":

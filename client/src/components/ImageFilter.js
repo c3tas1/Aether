@@ -44,6 +44,10 @@ function ImageFilter() {
     const [decompressionProgress, setDecompressionProgress] = useState(0);
     const [fileTree, setFileTree] = useState(null);
     
+    // Preview Modal State
+    const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
+    const [previewContent, setPreviewContent] = useState({ type: null, content: '', name: '' });
+
     // Other existing state...
     const [searchQuery, setSearchQuery] = useState("");
     const [feeOption, setFeeOption] = useState("");
@@ -79,7 +83,6 @@ function ImageFilter() {
         if (pollingIntervalRef.current) {
             clearInterval(pollingIntervalRef.current);
         }
-        // Reset all modal-related state
         setModalView('form');
         setFileTree(null);
         setActivePathSelection(null);
@@ -135,7 +138,6 @@ function ImageFilter() {
                 setUploadProgress(Math.round((event.loaded / event.total) * 100));
             }
         });
-
         xhr.addEventListener("load", () => {
             if (xhr.status >= 200 && xhr.status < 300) {
                 const result = JSON.parse(xhr.responseText);
@@ -164,18 +166,13 @@ function ImageFilter() {
             setSearchQuery("");
             setFeeOption("");
             setPage(1);
-
             const res = await fetch(`${BASE_URL}/api/datasets/${lastUploadedDatasetId}/images`);
-            if (!res.ok) {
-                throw new Error("Failed to fetch dataset images.");
-            }
+            if (!res.ok) throw new Error("Failed to fetch dataset images.");
             const data = await res.json();
             const mapped = data.map(item => ({...item, dataUrl: "data:image/jpeg;base64," + item.base64}));
-
             setImages(mapped);
             setMode('multiple');
             handleCloseModal();
-
         } catch (err) {
             console.error(err);
             alert(err.message);
@@ -186,21 +183,36 @@ function ImageFilter() {
         setActivePathSelection(pathType);
     };
 
-    const handleFileSelect = (filePath) => {
-        if (!activePathSelection) {
-            alert("Please click a 'Set' button first to choose which path to assign.");
-            return;
+    const handleFileNodeClick = (node) => {
+        if (activePathSelection) {
+            const fullPath = node.path ? `${fileTree.name}/${node.path}` : fileTree.name;
+            if (activePathSelection === 'train') setTrainPath(fullPath);
+            else if (activePathSelection === 'valid') setValidPath(fullPath);
+            else if (activePathSelection === 'test') setTestPath(fullPath);
+            setActivePathSelection(null);
+        } else {
+            fetchAndShowPreview(node);
         }
-        
-        const fullPath = `${fileTree.name}/${filePath}`;
-
-        if (activePathSelection === 'train') setTrainPath(fullPath);
-        else if (activePathSelection === 'valid') setValidPath(fullPath);
-        else if (activePathSelection === 'test') setTestPath(fullPath);
-        
-        setActivePathSelection(null);
     };
 
+    const fetchAndShowPreview = async (node) => {
+        const fileExt = node.name.split('.').pop().toLowerCase();
+        if (!['txt', 'png', 'jpg', 'jpeg'].includes(fileExt)) {
+            alert("This file type cannot be previewed.");
+            return;
+        }
+        try {
+            const res = await fetch(`${BASE_URL}/api/datasets/${lastUploadedDatasetId}/preview?path=${node.path}`);
+            if (!res.ok) throw new Error("Could not fetch file content.");
+            const data = await res.json();
+            setPreviewContent({ ...data, name: node.name });
+            setIsPreviewModalOpen(true);
+        } catch (err) {
+            console.error(err);
+            alert(err.message);
+        }
+    };
+    
     const handleSaveMetadata = async () => {
         if (!lastUploadedDatasetId) {
             alert("Cannot save, dataset ID is missing.");
@@ -212,9 +224,7 @@ function ImageFilter() {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ trainPath, validPath, testPath }),
             });
-            if (!res.ok) {
-                throw new Error("Failed to save metadata.");
-            }
+            if (!res.ok) throw new Error("Failed to save metadata.");
             alert("Metadata saved successfully!");
         } catch (err) {
             console.error(err);
@@ -370,9 +380,7 @@ function ImageFilter() {
                         <div className="progress-bar-label">
                             {modalView === 'uploading' ? `Uploading... ${uploadProgress}%` : `Decompressing... ${decompressionProgress}%`}
                         </div>
-                        <div className="progress-bar">
-                            <div className="progress-bar-fill" style={{ width: `${modalView === 'uploading' ? uploadProgress : decompressionProgress}%` }}></div>
-                        </div>
+                        <div className="progress-bar"><div className="progress-bar-fill" style={{ width: `${modalView === 'uploading' ? uploadProgress : decompressionProgress}%` }}></div></div>
                     </div>
                 );
             case 'complete':
@@ -382,13 +390,15 @@ function ImageFilter() {
                         <div className="modal-form-columns">
                             <div className="modal-form-column">
                                 <div className="file-tree-instructions">
-                                    Click a "Set" button, then click a file below.
+                                    {activePathSelection 
+                                        ? `Now click a file to set the ${activePathSelection} path...`
+                                        : 'Click a file to preview, or a "Set" button to assign a path.'
+                                    }
                                 </div>
                                 <div className="file-tree-container">
                                     <FileTree 
                                         node={fileTree} 
-                                        onFileClick={handleFileSelect}
-                                        activePath={ (activePathSelection === 'train' && trainPath) || (activePathSelection === 'valid' && validPath) || (activePathSelection === 'test' && testPath) || '' }
+                                        onFileNodeClick={handleFileNodeClick}
                                         isRoot={true}
                                     />
                                 </div>
@@ -419,7 +429,7 @@ function ImageFilter() {
                         </div>
                         <div className="info-panel-actions">
                             <button onClick={handleSaveMetadata} className="terminal-button primary">Save Metadata</button>
-                            <button onClick={handlePreviewDataset} className="terminal-button">Preview Dataset</button>
+                            <button onClick={handlePreviewDataset} className="terminal-button">Preview in Annotator</button>
                             <button onClick={handleCloseModal} className="terminal-button">Done</button>
                         </div>
                     </div>
@@ -451,6 +461,20 @@ function ImageFilter() {
     return (
         <div className="image-filter-container">
             <Modal isOpen={isModalOpen} onClose={handleCloseModal}>{renderModalContent()}</Modal>
+            <Modal isOpen={isPreviewModalOpen} onClose={() => setIsPreviewModalOpen(false)}>
+                <div className="preview-panel">
+                    <h3 className="preview-title">{previewContent.name}</h3>
+                    <div className="preview-content">
+                        {previewContent.type === 'image' && (
+                            <img src={`data:image/jpeg;base64,${previewContent.content}`} alt="File preview" />
+                        )}
+                        {previewContent.type === 'text' && (
+                            <pre>{previewContent.content}</pre>
+                        )}
+                    </div>
+                </div>
+            </Modal>
+            
             <h1 className="page-title">{'// ANNOTATION_INTERFACE'}</h1>
             <div className="controls-grid">
                 <fieldset className="control-group">

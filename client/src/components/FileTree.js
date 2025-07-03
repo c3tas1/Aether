@@ -17,35 +17,27 @@ const FolderIcon = ({ isOpen }) => (
   </svg>
 );
 
-const FileTree = ({ node, onFileClick, activePath, isRoot = false }) => {
-    // MODIFICATION: Root is open by default, children are closed.
+const FileTree = ({ node, onFileNodeClick, isRoot = false }) => {
     const [isOpen, setIsOpen] = useState(isRoot);
 
-    if (!node) {
-        return null;
-    }
+    if (!node) return null;
 
     const isFolder = node.type === 'folder';
 
+    // When an item is clicked, folders toggle, files report back
     const handleClick = () => {
         if (isFolder) {
             setIsOpen(!isOpen);
         } else {
-            if (onFileClick) {
-                onFileClick(node.path);
+            if (onFileNodeClick) {
+                onFileNodeClick(node); // Pass the entire node object
             }
         }
     };
 
-    const relativeActivePath = activePath.substring(activePath.indexOf('/') + 1);
-    const isActive = !isFolder && relativeActivePath === node.path;
-
     return (
         <div className="file-tree-node">
-            <div 
-                className={`node-item ${isFolder ? 'folder' : 'file'} ${isActive ? 'active' : ''}`} 
-                onClick={handleClick}
-            >
+            <div className={`node-item ${isFolder ? 'folder' : 'file'}`} onClick={handleClick}>
                 <span className="node-icon">
                     {isFolder ? <FolderIcon isOpen={isOpen} /> : <FileIcon />}
                 </span>
@@ -57,8 +49,7 @@ const FileTree = ({ node, onFileClick, activePath, isRoot = false }) => {
                         <FileTree 
                             key={index} 
                             node={childNode} 
-                            onFileClick={onFileClick}
-                            activePath={activePath}
+                            onFileNodeClick={onFileNodeClick}
                         />
                     ))}
                 </div>

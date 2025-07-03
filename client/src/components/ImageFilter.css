@@ -488,3 +488,38 @@ input[type="file"] {
     color: #aaa;
     text-align: center;
 }
+
+/* Add these styles to ImageFilter.css */
+
+.preview-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    max-height: 80vh;
+}
+
+.preview-title {
+    color: #8FBC8F;
+    text-align: center;
+    border-bottom: 1px solid #8FBC8F;
+    padding-bottom: 1rem;
+    margin-top: 0;
+}
+
+.preview-content {
+    overflow: auto;
+    background-color: rgba(13,13,13,0.5);
+    padding: 1rem;
+    border-radius: 4px;
+}
+
+.preview-content img {
+    max-width: 100%;
+    display: block;
+}
+
+.preview-content pre {
+    color: #DCDCDC;
+    white-space: pre-wrap; /* Allows text to wrap */
+    word-wrap: break-word;
+}
