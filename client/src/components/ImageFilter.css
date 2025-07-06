@@ -1,9 +1,9 @@
 /* --- Base Container & Typography --- */
-.training-container {
+.image-filter-container {
     background-color: #0D0D0D;
     color: #DCDCDC;
     font-family: 'Fira Code', monospace;
-    min-height: calc(100vh - 80px);
+    min-height: calc(100vh - 80px); /* Adjust based on navbar height */
     padding: 2rem;
 }
 
@@ -11,8 +11,16 @@
     color: #8FBC8F;
     font-weight: 400;
     text-align: center;
-    margin-bottom: 2rem;
+    margin-bottom: 0.5rem;
     letter-spacing: 2px;
+}
+
+.dataset-subtitle {
+    text-align: center;
+    color: #888;
+    font-weight: 400;
+    margin-bottom: 2rem;
+    font-size: 1rem;
 }
 
 .status-text {
@@ -21,10 +29,10 @@
     color: #888;
 }
 
-/* --- Top Controls Layout --- */
+/* --- Controls & Forms --- */
 .controls-grid {
-    display: flex;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
     gap: 1.5rem;
     margin-bottom: 2rem;
 }
@@ -34,7 +42,11 @@
     padding: 1.5rem;
     border-radius: 4px;
     background-color: rgba(143, 188, 143, 0.05);
-    flex: 1 1 300px;
+}
+
+.control-group:disabled {
+    border-color: #444;
+    background-color: #222;
 }
 
 .control-group legend {
@@ -50,21 +62,6 @@
     align-items: center;
 }
 
-/* --- Panel Sizing --- */
-.filter-search-panel {
-    flex-grow: 2;
-}
-
-.view-mode-panel {
-    flex-grow: 1.5;
-    flex-basis: 320px;
-}
-
-.models-panel {
-    flex-grow: 1.5;
-    flex-basis: 300px;
-}
-
 /* --- Terminal-style UI Elements --- */
 .terminal-button, .terminal-input, .terminal-select {
     background-color: transparent;
@@ -74,14 +71,6 @@
     font-family: 'Fira Code', monospace;
     border-radius: 4px;
     transition: all 0.2s ease;
-}
-
-.terminal-input {
-    flex-grow: 1;
-}
-
-.terminal-button {
-    cursor: pointer;
 }
 
 .terminal-button:hover, .terminal-input:focus, .terminal-select:focus {
@@ -96,9 +85,10 @@
     font-weight: bold;
 }
 
-.terminal-button:disabled {
-    background-color: #8FBC8F;
-    color: #0D0D0D;
+.terminal-button:disabled, .terminal-input:disabled, .terminal-select:disabled {
+    border-color: #444;
+    background-color: #222;
+    color: #555;
     cursor: not-allowed;
     box-shadow: none;
 }
@@ -117,76 +107,16 @@ input[type="file"] {
     background-repeat: no-repeat;
     background-position: right 1rem center;
     background-size: .65em auto;
+    flex-grow: 1; /* Allow select to grow */
 }
 
-/* --- React Select (Searchable Dropdown) Theming --- */
-.react-select-container {
-    width: 100%;
-}
-.react-select__control {
-    background-color: transparent !important;
-    border: 1px solid #8FBC8F !important;
-    border-radius: 4px !important;
-    font-family: 'Fira Code', monospace !important;
-    min-height: 44px !important; /* Match button height */
-}
-.react-select__control--is-focused, .react-select__control:hover {
-    border-color: #DCDCDC !important;
-    box-shadow: 0 0 7px rgba(143, 188, 143, 0.5) !important;
-}
-.react-select__value-container {
-    padding: 0 1rem !important;
-}
-.react-select__placeholder, .react-select__single-value {
-    color: #DCDCDC !important;
-}
-.react-select__input-container, .react-select__input {
-    color: #DCDCDC !important;
-    margin: 0 !important;
-    padding: 0 !important;
-}
-.react-select__indicator-separator {
-    display: none !important;
-}
-.react-select__indicator {
-    color: #8FBC8F !important;
-}
-.react-select__menu {
-    background-color: #0D0D0D !important;
-    border: 1px solid #8FBC8F !important;
-    border-radius: 4px !important;
-    font-family: 'Fira Code', monospace !important;
-}
-.react-select__option {
-    background-color: transparent !important;
-    color: #DCDCDC !important;
-}
-.react-select__option:hover {
-    background-color: rgba(143, 188, 143, 0.1) !important;
-}
-.react-select__option--is-focused {
-    background-color: rgba(143, 188, 143, 0.2) !important;
-}
-.react-select__option--is-selected {
-    background-color: #8FBC8F !important;
-    color: #0D0D0D !important;
-    font-weight: bold;
-}
-
-
-/* --- Main Content Area --- */
-.main-content-area {
-    margin-top: 2rem;
-    margin-bottom: 2rem;
-}
-
-/* --- Full-width Class Selector --- */
+/* --- Class Selector --- */
 .class-selector-panel {
     border: 1px solid #8FBC8F;
-    padding: 1.5rem;
+    padding: 1rem 1.5rem;
     border-radius: 4px;
     background-color: rgba(143, 188, 143, 0.05);
-    margin-top: 2rem;
+    margin-bottom: 2rem;
 }
 .class-selector-panel legend {
     color: #8FBC8F;
@@ -197,9 +127,15 @@ input[type="file"] {
 .class-buttons-container {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.75rem;
+    gap: 0.5rem;
 }
 
+/* --- Mode Toggle --- */
+.mode-toggle-group {
+    display: flex;
+    width: 100%;
+    gap: 1rem;
+}
 
 /* --- Action Bar & Pagination --- */
 .action-bar, .pagination-controls {
@@ -209,16 +145,18 @@ input[type="file"] {
     gap: 1rem;
     margin: 2rem 0;
 }
+
 .pagination-controls span {
     color: #8FBC8F;
 }
 
-/* --- Single & Multiple Mode --- */
+/* --- Single Mode View --- */
 .single-mode-container {
     display: flex;
     flex-direction: column;
     align-items: center;
 }
+
 .single-image-wrapper {
     position: relative;
     max-width: 800px;
@@ -226,11 +164,13 @@ input[type="file"] {
     border: 1px solid #8FBC8F;
     box-shadow: 0 0 15px rgba(143, 188, 143, 0.2);
 }
+
 .main-image {
     display: block;
     width: 100%;
     height: auto;
 }
+
 .annotation-canvas {
     position: absolute;
     top: 0;
@@ -239,11 +179,14 @@ input[type="file"] {
     height: 100%;
     cursor: crosshair;
 }
+
+/* --- Multiple Mode View --- */
 .multiple-mode-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
     gap: 1.5rem;
 }
+
 .thumb-card {
     border: 1px solid #8FBC8F;
     border-radius: 4px;
@@ -251,391 +194,64 @@ input[type="file"] {
     display: flex;
     flex-direction: column;
 }
+
 .thumb-image-wrapper {
     position: relative;
     width: 100%;
 }
+
 .thumb-controls {
     display: flex;
     gap: 0.5rem;
     padding: 0.5rem;
     justify-content: center;
 }
+
 .terminal-button.small {
     padding: 0.3rem 0.6rem;
     font-size: 0.75rem;
 }
+
 .terminal-button.discard {
     border-color: #c44;
     color: #c44;
 }
+
 .terminal-button.discard:hover {
     background-color: #c44;
     color: #fff;
 }
+
 .terminal-button.discarded {
     border-color: #444;
     background-color: #222;
     color: #555;
 }
-/* Add these styles to components/ImageFilter.css */
+/* Add these styles to your ImageFilter.css file */
 
-.modal-form {
+.spinner-container {
     display: flex;
-    flex-direction: column;
-    gap: 1.5rem;
-}
-
-.modal-form .page-title {
-    margin-bottom: 0;
-}
-
-.form-group {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-}
-
-.form-group label {
-    color: #8FBC8F;
-    font-size: 0.9rem;
-}
-
-.terminal-textarea {
-    background-color: transparent;
-    border: 1px solid #8FBC8F;
-    color: #DCDCDC;
-    padding: 0.6rem 1.2rem;
-    font-family: 'Fira Code', monospace;
-    border-radius: 4px;
-    transition: all 0.2s ease;
-    resize: vertical;
-}
-
-.terminal-textarea:focus {
-    outline: none;
-    border-color: #DCDCDC;
-    box-shadow: 0 0 7px rgba(143, 188, 143, 0.5);
-}
-
-.data-input-form {
-    display: flex;
-    gap: 1rem;
-    align-items: center;
-}
-
-.terminal-button.full-width {
-    width: 100%;
-}
-
-/* Add these styles to components/ImageFilter.css */
-
-.modal-content {
-    max-width: 800px; /* Widen the modal for the new layout */
-}
-
-.modal-header-art {
-    color: #8FBC8F;
-    text-align: center;
-    margin-bottom: 2rem;
-    font-size: 1rem;
-    white-space: pre;
-    text-shadow: 0 0 5px rgba(143, 188, 143, 0.5);
-}
-
-.modal-form-columns {
-    display: flex;
-    gap: 2rem; /* Creates space between the two columns */
-    margin-bottom: 2rem;
-}
-
-.modal-form-column {
-    flex: 1; /* Each column takes up equal space */
-    display: flex;
-    flex-direction: column;
-    gap: 1.5rem; /* Space between form groups within a column */
-}
-
-/* Adjust textarea height for better balance */
-.modal-form .terminal-textarea {
-    min-height: 100px;
-}
-
-/* Ensure these styles are in ImageFilter.css */
-
-/* --- Progress Bar --- */
-.progress-bar-container {
-    padding: 2rem;
-    text-align: center;
-}
-.progress-bar-label {
-    color: #DCDCDC;
-    margin-bottom: 1.5rem;
-    font-size: 1.1rem;
-}
-.progress-bar {
-    width: 100%;
-    height: 25px;
-    background-color: rgba(143, 188, 143, 0.1);
-    border: 1px solid #8FBC8F;
-    border-radius: 4px;
-    padding: 3px;
-}
-.progress-bar-fill {
-    height: 100%;
-    background-color: #8FBC8F;
-    border-radius: 2px;
-    transition: width 0.3s ease-in-out;
-    box-shadow: 0 0 10px rgba(143, 188, 143, 0.5);
-    text-align: center;
-    line-height: 19px;
-    color: #0D0D0D;
-    font-weight: bold;
-    font-size: 0.8rem;
-}
-
-
-/* --- Post-Upload Info Panel --- */
-.dataset-info-panel {
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-    padding: 1rem;
-}
-.dataset-info-panel .form-group {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-}
-.dataset-info-panel .terminal-input:read-only {
-    background-color: rgba(143, 188, 143, 0.1);
-    cursor: default;
-    color: #aaa;
-}
-.info-panel-actions {
-    display: flex;
-    gap: 1rem;
-    margin-top: 1.5rem;
-    align-items: center;
     justify-content: center;
-}
-
-/* Add this to the bottom of ImageFilter.css */
-.file-tree-container {
-    max-height: 400px;
-    overflow-y: auto;
-    background-color: rgba(143, 188, 143, 0.05);
-    border: 1px solid #8FBC8F;
-    padding: 1rem;
-    border-radius: 4px;
-}
-
-/* Add these styles to ImageFilter.css */
-.path-input-group {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-}
-
-.path-input-row {
-    display: flex;
     align-items: center;
-    gap: 0.5rem;
+    min-height: 400px;
 }
 
-.path-input-row .terminal-input {
-    flex-grow: 1;
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
 }
 
-/* Add these styles to ImageFilter.css */
-
-.path-input-group {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    padding: 1rem;
-    border: 1px solid transparent; /* Add border for transition */
-    border-radius: 4px;
-    transition: all 0.3s ease;
+.spinner {
+    border: 5px solid #444;
+    border-top: 5px solid #8FBC8F;
+    border-radius: 50%;
+    width: 50px;
+    height: 50px;
+    animation: spin 1s linear infinite;
 }
 
-/* New style to highlight the whole active group */
-.path-input-group.active-selection {
-    border-color: #8FBC8F;
-    box-shadow: 0 0 10px rgba(143, 188, 143, 0.3);
-}
-.path-input-group.active-selection label {
-    color: #DCDCDC;
-}
-
-
-.path-input-row {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}
-
-.path-input-row .terminal-input {
-    flex-grow: 1;
-}
-
-/* Styling for the instruction box */
-.file-tree-instructions {
-    padding: 0.75rem;
-    border: 1px dashed rgba(143, 188, 143, 0.4);
-    border-radius: 4px;
+.image-info {
+    color: #888;
     margin-bottom: 1rem;
-    color: #aaa;
-    text-align: center;
-}
-
-/* Add these styles to ImageFilter.css */
-
-.preview-panel {
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-    max-height: 80vh;
-}
-
-.preview-title {
-    color: #8FBC8F;
-    text-align: center;
-    border-bottom: 1px solid #8FBC8F;
-    padding-bottom: 1rem;
-    margin-top: 0;
-}
-
-.preview-content {
-    overflow: auto;
-    background-color: rgba(13,13,13,0.5);
-    padding: 1rem;
-    border-radius: 4px;
-}
-
-.preview-content img {
-    max-width: 100%;
-    display: block;
-}
-
-.preview-content pre {
-    color: #DCDCDC;
-    white-space: pre-wrap; /* Allows text to wrap */
-    word-wrap: break-word;
-}
-
-/* Add/Modify these styles in ImageFilter.css */
-
-/* FIX 1: Make path labels always visible and add spacing */
-.path-input-group label {
-    color: #8FBC8F;
-    font-size: 0.9rem;
-    margin-bottom: 0.25rem;
-}
-
-/* FIX 2 & BEAUTIFY: Align custom field rows and add breathing room */
-.path-selection-panel {
-    display: flex;
-    flex-direction: column;
-    gap: 1rem; /* Adds space between Train, Valid, and Test groups */
-}
-
-.custom-field-row .terminal-input.custom {
-    flex-grow: 1;  /* Allow key/value inputs to share space equally */
-    flex-basis: 0;   /* Let flex-grow control the size from a base of 0 */
-}
-
-.terminal-button.small.remove {
-    flex-shrink: 0; /* Prevent the remove button from shrinking */
-}
-
-/* Add these styles to ImageFilter.css for JSON validation */
-
-.terminal-textarea.invalid {
-    border-color: #c44; /* Hacker-style red for errors */
-    box-shadow: 0 0 8px rgba(200, 68, 68, 0.5);
-}
-
-.path-input-group .form-group {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    margin-top: 1rem;
-}
-
-.modal-content {
-    background-color: #0D0D0D;
-    padding: 2rem;
-    border-radius: 5px;
-    border: 1px solid #8FBC8F;
-    box-shadow: 0 0 25px rgba(143, 188, 143, 0.3);
-    position: relative;
-    width: 90%;
-    max-width: 800px;
     font-family: 'Fira Code', monospace;
-    /* NEW: Add scrolling for tall content */
-    max-height: 90vh;
-    overflow-y: auto;
-}
-
-.modal-form-columns {
-    display: flex;
-    gap: 2rem;
-    margin-bottom: 2rem;
-}
-
-/* NEW: Media query to stack columns on smaller screens */
-@media (max-width: 900px) {
-    .modal-form-columns {
-        flex-direction: column;
-    }
-}
-
-/* Add to ImageFilter.css */
-
-.thumbnail-preview {
-    margin-top: 1rem;
-    border: 1px solid #8FBC8F;
-    padding: 0.5rem;
-    border-radius: 4px;
-    background-color: rgba(143, 188, 143, 0.05);
-}
-
-.thumbnail-preview img {
-    width: 100%;
-    height: auto;
-    display: block;
-    border-radius: 2px;
-}
-
-modal-form {
-    display: flex;
-    flex-direction: column;
-    gap: 1.5rem; /* Creates space between form groups */
-}
-
-.form-section-header {
-    color: #8FBC8F;
-    margin-top: 1rem;
-    margin-bottom: 0.5rem;
-    padding-bottom: 0.5rem;
-    border-bottom: 1px dashed rgba(143, 188, 143, 0.4);
-    font-size: 1rem;
-}
-
-.form-group-inline {
-    display: flex;
-    gap: 1rem;
-    align-items: center;
-}
-
-.form-group-inline > .form-group {
-    flex: 1;
-}
-
-.thumbnail-group {
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-    align-items: flex-start;
 }

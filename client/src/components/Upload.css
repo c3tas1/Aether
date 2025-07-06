@@ -1,112 +1,277 @@
-/* --- Main Container --- */
+/* --- Main Container & Panel --- */
 .upload-container {
     display: flex;
     justify-content: center;
-    align-items: flex-start; /* Align to the top */
-    min-height: calc(100vh - 80px); /* Adjust based on navbar height */
-    padding: 2rem;
+    align-items: flex-start;
+    min-height: calc(100vh - 80px); /* Adjust for navbar */
+    padding: 3rem;
     background-color: #0D0D0D;
     font-family: 'Fira Code', monospace;
     color: #DCDCDC;
 }
 
-/* --- Upload Card --- */
-.upload-card {
+.upload-panel {
     width: 100%;
-    max-width: 800px;
-    border: 1px solid #8FBC8F;
-    background-color: rgba(143, 188, 143, 0.05); /* Very subtle background tint */
-    padding: 2rem;
-    border-radius: 5px;
+    max-width: 900px;
+    background: #1a1a1a;
+    border: 1px solid #333;
+    border-radius: 8px;
+    padding: 2.5rem 3rem;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
     text-align: center;
-    box-shadow: 0 0 15px rgba(143, 188, 143, 0.2);
 }
 
-.upload-title {
+.panel-title {
     color: #8FBC8F;
-    margin-bottom: 2rem;
-    font-weight: 400;
+    font-weight: 500;
+    font-size: 1.8rem;
+    letter-spacing: 1px;
+    margin-bottom: 0.5rem;
 }
 
-/* --- Custom File Input & Dropzone --- */
-.upload-dropzone {
+.panel-subtitle {
+    color: #888;
+    margin-bottom: 2.5rem;
+    font-size: 1rem;
+}
+
+/* --- Stepper --- */
+.stepper {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    max-width: 700px;
+    margin: 0 auto 3rem auto;
+}
+.step {
     display: flex;
     flex-direction: column;
+    align-items: center;
+    color: #555;
+    transition: color 0.3s;
+    width: 80px;
+}
+.step-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    border: 2px solid #555;
+    display: flex;
     justify-content: center;
     align-items: center;
-    border: 2px dashed #8FBC8F;
-    border-radius: 5px;
-    padding: 2rem;
-    cursor: pointer;
-    transition: all 0.3s ease;
+    font-weight: bold;
+    margin-bottom: 0.5rem;
+    transition: all 0.3s;
+    background: #2a2a2a;
+}
+.step-label {
+    font-size: 0.9rem;
+    text-align: center;
+}
+.step-connector {
+    flex-grow: 1;
+    height: 2px;
+    background-color: #555;
+    margin: 0 0.5rem;
+    transform: translateY(1.2rem);
+    transition: background-color 0.3s;
+}
+.step.active {
+    color: #8FBC8F;
+}
+.step.active .step-icon {
+    background-color: #8FBC8F;
+    border-color: #8FBC8F;
+    color: #0D0D0D;
+}
+.step-connector.active {
+    background-color: #8FBC8F;
 }
 
-.upload-dropzone:hover {
-    border-color: #DCDCDC;
-    background-color: rgba(143, 188, 143, 0.1);
-}
-
-/* Hide the default input */
-.upload-dropzone input[type="file"] {
-    display: none;
-}
-
-.upload-dropzone p {
-    margin: 0 0 1rem 0;
+/* --- Form Content --- */
+.form-content { text-align: left; }
+.step-title {
     color: #DCDCDC;
+    font-size: 1.3rem;
+    margin-bottom: 1.5rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid #333;
+    text-align: center;
 }
 
-.browse-btn {
+/* --- Dropzone (Step 1) --- */
+.dropzone {
+    border: 2px dashed #444;
+    border-radius: 8px;
+    padding: 2rem;
+    background-color: #111;
+    transition: border-color 0.3s, background-color 0.3s;
+    margin-bottom: 1.5rem;
+}
+.dropzone:hover {
+    border-color: #8FBC8F;
+    background-color: #1f1f1f;
+}
+.dropzone-label {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    cursor: pointer;
+    text-align: center;
+    color: #aaa;
+}
+.dropzone-label p { margin: 0.5rem 0; font-size: 1rem; }
+.file-icon { font-size: 3rem; color: #8FBC8F; }
+.dropzone-or { color: #666; }
+.browse-btn, .change-file-btn {
+    display: inline-block;
     padding: 0.6rem 1.2rem;
     border: 1px solid #8FBC8F;
     border-radius: 4px;
-    background-color: transparent;
     color: #8FBC8F;
+    margin-top: 1rem;
+    font-size: 0.9rem;
+    transition: background-color 0.3s, color 0.3s;
+}
+.browse-btn.small { padding: 0.5rem 1rem; font-size: 0.8rem; margin-top: 0; }
+.browse-btn:hover { background-color: #8FBC8F; color: #0D0D0D; }
+.change-file-btn { border-color: #555; color: #888; }
+.file-size { font-size: 0.8rem; color: #666; background: #2a2a2a; padding: 0.2rem 0.5rem; border-radius: 4px; }
+
+/* --- Form Grid & Groups (Step 2) --- */
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem; }
+.form-group { display: flex; flex-direction: column; margin-bottom: 1.5rem; }
+.form-group label { font-size: 0.9rem; color: #aaa; margin-bottom: 0.5rem; }
+.form-group input, .form-group textarea {
+    background-color: #111;
+    border: 1px solid #444;
+    color: #DCDCDC;
+    padding: 0.8rem;
     font-family: 'Fira Code', monospace;
-}
-
-/* --- Image Preview --- */
-.image-preview-container {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 1rem;
-    margin-top: 2rem;
-    justify-content: center;
-}
-
-.preview-image {
-    max-width: 200px;
-    max-height: 200px;
-    border: 1px solid #8FBC8F;
     border-radius: 4px;
-    object-fit: cover;
+    transition: border-color 0.3s;
 }
+.form-group input:focus, .form-group textarea:focus { outline: none; border-color: #8FBC8F; }
+textarea { resize: vertical; }
+.thumbnail-control { display: flex; align-items: center; gap: 1rem; }
+.thumbnail-preview { width: 50px; height: 50px; border-radius: 4px; border: 1px solid #444; object-fit: cover; }
 
-/* --- Upload Button --- */
-.upload-button {
-    margin-top: 2rem;
-    padding: 0.8rem 1.6rem;
-    border: 1px solid #8FBC8F;
-    border-radius: 4px;
-    background-color: #8FBC8F;
-    color: #0D0D0D;
-    cursor: pointer;
-    transition: all 0.3s ease;
+/* --- Buttons --- */
+.next-btn, .upload-btn, .back-btn {
+    width: 100%;
+    padding: 0.8rem;
     font-family: 'Fira Code', monospace;
     font-size: 1rem;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.3s;
+    border: none;
     font-weight: bold;
 }
+.next-btn, .upload-btn { background-color: #8FBC8F; color: #0D0D0D; }
+.next-btn:hover:not(:disabled), .upload-btn:hover:not(:disabled) { box-shadow: 0 0 10px #8FBC8F; }
+.next-btn:disabled, .upload-btn:disabled { background-color: #333; color: #666; cursor: not-allowed; }
+.back-btn { background: none; border: 1px solid #555; color: #aaa; }
+.back-btn:hover { background: #2a2a2a; color: #fff; }
+.button-group { display: flex; gap: 1rem; margin-top: 2rem; }
 
-.upload-button:hover {
-    background-color: transparent;
+/* --- Progress View (Step 3) --- */
+.progress-container { padding: 2rem 0; text-align: center; }
+.status-text { font-size: 1.1rem; color: #DCDCDC; margin-bottom: 2rem; min-height: 2em; }
+.progress-bar-wrapper { text-align: left; margin-bottom: 1.5rem; }
+.progress-bar-label { color: #aaa; margin-bottom: 0.5rem; font-size: 0.9rem; }
+.progress-bar { background-color: #222; border-radius: 4px; overflow: hidden; height: 12px; }
+.progress-bar-fill { height: 100%; background: linear-gradient(90deg, #8FBC8F, #a1d4a1); border-radius: 4px; transition: width 0.3s ease-in-out; }
+
+/* --- Indexing Layout (Step 4) --- */
+.indexing-layout {
+    display: grid;
+    grid-template-columns: 1fr 2fr;
+    gap: 2rem;
+    margin: 1.5rem 0;
+}
+.file-tree-panel h4, .scripting-panel h4 {
+    color: #aaa;
+    font-weight: 500;
+    margin-bottom: 1rem;
+}
+.file-tree-container {
+    height: 400px;
+    overflow-y: auto;
+    background-color: #111;
+    border: 1px solid #444;
+    border-radius: 4px;
+    padding: 1rem;
+}
+/* You may need to add this to your FileTree.css or here */
+.file-tree-container [data-file-type="file"]:hover {
+    cursor: pointer;
     color: #8FBC8F;
-    box-shadow: 0 0 7px #8FBC8F;
 }
 
-.upload-button:disabled {
-    border-color: #444;
-    background-color: #222;
-    color: #555;
-    cursor: not-allowed;
-    box-shadow: none;
+.code-editor {
+    width: 100%;
+    height: 400px;
+    background-color: #111;
+    border: 1px solid #444;
+    color: #DCDCDC;
+    padding: 1rem;
+    font-family: 'Fira Code', monospace;
+    border-radius: 4px;
+    resize: vertical;
+    font-size: 0.9rem;
+    line-height: 1.6;
+}
+.code-editor:focus {
+    outline: none;
+    border-color: #8FBC8F;
+}
+
+/* --- Preview Modal --- */
+.preview-panel {
+  padding: 1rem;
+  max-width: 80vw;
+  max-height: 80vh;
+  overflow: auto;
+  background-color: #2a2a2a;
+  border-radius: 8px;
+}
+.preview-title {
+  color: #8FBC8F;
+  border-bottom: 1px solid #444;
+  padding-bottom: 0.5rem;
+  margin-bottom: 1rem;
+}
+.preview-content img {
+  max-width: 100%;
+  border: 1px solid #444;
+  border-radius: 4px;
+  background-color: #fff; /* In case of transparent images */
+}
+.preview-content pre {
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  background-color: #1a1a1a;
+  padding: 1rem;
+  border-radius: 4px;
+  color: #DCDCDC;
+  max-height: 60vh;
+  overflow: auto;
+}
+/* Add this to the end of your existing Upload.css file */
+
+/* --- Spinner for Indexing --- */
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.spinner {
+    margin: 2rem auto;
+    border: 4px solid #444;
+    border-top: 4px solid #8FBC8F;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    animation: spin 1s linear infinite;
 }
