@@ -10,35 +10,17 @@ import shutil
 from PIL import Image
 
 # --- MOCK YOLOv7 INFERENCE ---
-# In a real application, you would import torch and your YOLOv7 model here.
-# For this example, we'll simulate the model's output.
 YOLO_MODELS = {
     "v1.0": {"weights": "/path/to/yolov7_v1.pt", "confidence": 0.4},
     "v2.1": {"weights": "/path/to/yolov7_v2.1.pt", "confidence": 0.5}
 }
 
 def run_yolo_inference(model_version, image_path):
-    """
-    This is a mock function. In a real implementation, this function would:
-    1. Load the specified YOLOv7 model weights.
-    2. Preprocess the image from `image_path`.
-    3. Run inference on the image.
-    4. Post-process the results to get bounding boxes.
-    5. Return the bounding boxes in the same format as load_yolo_annotations.
-    """
     print(f"--- MOCK INFERENCE: Running YOLOv7 {model_version} on {os.path.basename(image_path)} ---")
-    # Simulate finding a different number of objects with different models
     if model_version == "v1.0":
-        # Simulate finding two objects
-        return [
-            {"classId": 0, "x": 50, "y": 60, "w": 120, "h": 180},
-            {"classId": 1, "x": 200, "y": 100, "w": 80, "h": 90}
-        ]
+        return [{"classId": 0, "x": 50, "y": 60, "w": 120, "h": 180}, {"classId": 1, "x": 200, "y": 100, "w": 80, "h": 90}]
     elif model_version == "v2.1":
-        # Simulate finding one larger object
-        return [
-            {"classId": 0, "x": 40, "y": 50, "w": 250, "h": 300}
-        ]
+        return [{"classId": 0, "x": 40, "y": 50, "w": 250, "h": 300}]
     return []
 
 # ---------- CONFIGURATION ----------
@@ -92,31 +74,18 @@ def get_db_connection():
 def initialize_db():
     with get_db_connection() as conn:
         conn.execute("PRAGMA foreign_keys = ON;")
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS datasets (
-                name TEXT PRIMARY KEY NOT NULL,
-                class_names TEXT DEFAULT NULL
-            );
-        """)
+        conn.execute("CREATE TABLE IF NOT EXISTS datasets (name TEXT PRIMARY KEY NOT NULL, class_names TEXT DEFAULT NULL);")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS images (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                filename TEXT NOT NULL,
-                original_name TEXT NOT NULL,
-                path TEXT NOT NULL,
-                dataset_name TEXT NOT NULL,
-                width INTEGER,
-                height INTEGER,
+                id INTEGER PRIMARY KEY AUTOINCREMENT, filename TEXT NOT NULL, original_name TEXT NOT NULL,
+                path TEXT NOT NULL, dataset_name TEXT NOT NULL, width INTEGER, height INTEGER,
                 FOREIGN KEY (dataset_name) REFERENCES datasets(name) ON DELETE CASCADE,
                 UNIQUE(dataset_name, filename)
             );
         """)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS annotation_sets (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                image_id INTEGER NOT NULL,
-                name TEXT NOT NULL, -- e.g., "default", "yolov7_v1.0"
-                path TEXT NOT NULL,
+                id INTEGER PRIMARY KEY AUTOINCREMENT, image_id INTEGER NOT NULL, name TEXT NOT NULL, path TEXT NOT NULL,
                 FOREIGN KEY (image_id) REFERENCES images(id) ON DELETE CASCADE,
                 UNIQUE(image_id, name)
             );
@@ -148,8 +117,7 @@ def upload_images():
     os.makedirs(temp_dir, exist_ok=True)
 
     try:
-        all_temp_image_sources = {}
-        all_temp_annotation_sources = {}
+        all_temp_image_sources, all_temp_annotation_sources = {}, {}
         for file_obj in request.files.getlist("images"):
             if not file_obj.filename: continue
             if file_obj.filename.lower().endswith(".zip"):
@@ -259,21 +227,27 @@ def update_annotations(set_id):
 def fetch_images_from_db(view_mode):
     page = int(request.args.get("page", 1))
     per_page = int(request.args.get("limit" if view_mode == "multiple" else "per_page", 10))
+    search_text = request.args.get("search", "")
     dataset_name = request.args.get("dataset", "").strip()
 
     if not dataset_name:
         return jsonify({"images": [], "total_count": 0})
 
-    base_query = "FROM images i WHERE i.dataset_name = ?"
     params = [dataset_name]
+    where_clauses = ["i.dataset_name = ?"]
+
+    if search_text:
+        where_clauses.append("(i.filename LIKE ? OR i.original_name LIKE ?)")
+        params.extend([f"%{search_text}%", f"%{search_text}%"])
+    
+    where_sql = "WHERE " + " AND ".join(where_clauses)
     
     with get_db_connection() as conn:
-        total_count = conn.execute(f"SELECT COUNT(*) {base_query}", tuple(params)).fetchone()[0]
-        
-        image_rows = conn.execute(
-            f"SELECT * {base_query} ORDER BY i.id LIMIT ? OFFSET ?",
-            tuple(params) + (per_page, (page - 1) * per_page)
-        ).fetchall()
+        count_query = f"SELECT COUNT(i.id) FROM images i {where_sql}"
+        total_count = conn.execute(count_query, tuple(params)).fetchone()[0]
+
+        image_query = f"SELECT i.* FROM images i {where_sql} ORDER BY i.id LIMIT ? OFFSET ?"
+        image_rows = conn.execute(image_query, tuple(params) + (per_page, (page - 1) * per_page)).fetchall()
 
         response_images = []
         for row in image_rows:
@@ -291,7 +265,6 @@ def fetch_images_from_db(view_mode):
                 boxes = load_yolo_annotations(ann_set['path'], image_dict['width'], image_dict['height'])
                 annotation_sets_data.append({"id": ann_set['id'], "name": ann_set['name'], "boxes": boxes})
             
-            # Ensure there's always at least one "default" set for annotation
             if not any(s['name'] == 'default' for s in annotation_sets_data):
                 annotation_sets_data.insert(0, {"id": None, "name": "default", "boxes": []})
 
@@ -324,4 +297,4 @@ def get_dataset_classes(dataset_name):
 # ---------- INIT & RUN ----------
 if __name__ == "__main__":
     initialize_db()
-    app.run(host="127.0.0.1", port=5000, debug=True)
+    app.run(host="0.0.0.0", port=5000, debug=True)
