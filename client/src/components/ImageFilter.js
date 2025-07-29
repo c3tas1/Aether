@@ -16,7 +16,7 @@ const ANNOTATION_FILL_ALPHA = 0.2;
 const ANNOTATION_FONT_SIZE = 16;
 const ANNOTATION_THUMB_FONT_SIZE = 12;
 const TEMP_ANNOTATION_COLOR = "rgba(173, 216, 230, 0.7)";
-const AUTOSAVE_DELAY = 1500; // 1.5 seconds
+const AUTOSAVE_DELAY = 1500;
 
 // --- GLOBAL HELPER: Draw Bounding Box ---
 const drawBox = (ctx, box, offsetX, offsetY, scaleX, scaleY, isTemp, isThumb, classNamesList) => {
@@ -55,7 +55,36 @@ const drawBox = (ctx, box, offsetX, offsetY, scaleX, scaleY, isTemp, isThumb, cl
     }
 };
 
-// --- Child Component: Classes Panel ---
+// --- Child Component: AnnotationNavigator ---
+function AnnotationNavigator({ sets, currentIndex, onNavigate, onGenerate, models, isGenerating, imageId }) {
+    const [selectedModel, setSelectedModel] = useState(models[0] || "");
+
+    useEffect(() => {
+        if (models.length > 0 && !selectedModel) {
+            setSelectedModel(models[0]);
+        }
+    }, [models, selectedModel]);
+
+    return (
+        <div style={styles.annotationNav.container}>
+            <div style={styles.annotationNav.navControls}>
+                <button onClick={() => onNavigate('prev')} disabled={sets.length <= 1}>&lt;</button>
+                <span>{sets[currentIndex]?.name || 'default'} ({currentIndex + 1}/{sets.length})</span>
+                <button onClick={() => onNavigate('next')} disabled={sets.length <= 1}>&gt;</button>
+            </div>
+            <div style={styles.annotationNav.generateControls}>
+                <select value={selectedModel} onChange={(e) => setSelectedModel(e.target.value)} disabled={models.length === 0}>
+                    {models.length > 0 ? models.map(m => <option key={m} value={m}>{m}</option>) : <option>No Models</option>}
+                </select>
+                <button onClick={() => onGenerate(imageId, selectedModel)} disabled={isGenerating || models.length === 0}>
+                    {isGenerating ? "Generating..." : "Generate"}
+                </button>
+            </div>
+        </div>
+    );
+}
+
+// --- Child Component: ClassesPanel ---
 function ClassesPanel({ classNames, currentClassId, onClassSelect }) {
     if (!classNames || classNames.length === 0) {
         return (
@@ -85,11 +114,12 @@ function ClassesPanel({ classNames, currentClassId, onClassSelect }) {
 
 
 // --- Child Component: Multiple View Thumbnail ---
-function MultipleThumb({ image, classId, onUpdateImage, currentClassNames }) {
+function MultipleThumb({ image, classId, onUpdateImage, currentClassNames, annotationNavUI }) {
     const canvasRef = useRef(null);
     const [isDrawing, setIsDrawing] = useState(false);
     const [startPt, setStartPt] = useState(null);
     const imgCacheRefThumb = useRef(new Image());
+    const [currentAnnotationSetIndex, setCurrentAnnotationSetIndex] = useState(0);
 
     const drawMultipleCanvasContent = useCallback((ctx, img, tempBox = null) => {
         ctx.clearRect(0, 0, MULTIPLE_MODE_CANVAS_WIDTH, MULTIPLE_MODE_CANVAS_HEIGHT);
@@ -102,26 +132,29 @@ function MultipleThumb({ image, classId, onUpdateImage, currentClassNames }) {
         const offsetY = (MULTIPLE_MODE_CANVAS_HEIGHT - drawHeight) / 2;
         const scaleX = drawWidth / originalWidth;
         const scaleY = drawHeight / originalHeight;
+        
+        const boxes = img.annotationSets[currentAnnotationSetIndex]?.boxes || [];
+
         if (imgCacheRefThumb.current.src !== img.dataUrl || !imgCacheRefThumb.current.complete) {
             imgCacheRefThumb.current.src = img.dataUrl;
             imgCacheRefThumb.current.onload = () => {
                 ctx.drawImage(imgCacheRefThumb.current, offsetX, offsetY, drawWidth, drawHeight);
-                img.boxes.forEach(box => drawBox(ctx, box, offsetX, offsetY, scaleX, scaleY, false, true, currentClassNames));
+                boxes.forEach(box => drawBox(ctx, box, offsetX, offsetY, scaleX, scaleY, false, true, currentClassNames));
                 if (tempBox) drawBox(ctx, tempBox, offsetX, offsetY, scaleX, scaleY, true, true, currentClassNames);
             };
         } else {
             ctx.drawImage(imgCacheRefThumb.current, offsetX, offsetY, drawWidth, drawHeight);
-            img.boxes.forEach(box => drawBox(ctx, box, offsetX, offsetY, scaleX, scaleY, false, true, currentClassNames));
+            boxes.forEach(box => drawBox(ctx, box, offsetX, offsetY, scaleX, scaleY, false, true, currentClassNames));
             if (tempBox) drawBox(ctx, tempBox, offsetX, offsetY, scaleX, scaleY, true, true, currentClassNames);
         }
-    }, [currentClassNames]);
+    }, [currentClassNames, currentAnnotationSetIndex]);
 
     useEffect(() => {
         const canvas = canvasRef.current;
         if (!canvas || !image.dataUrl) return;
         const ctx = canvas.getContext("2d");
         drawMultipleCanvasContent(ctx, image);
-    }, [image, drawMultipleCanvasContent]);
+    }, [image, drawMultipleCanvasContent, currentAnnotationSetIndex]);
 
     const getOriginalCoords = (e) => {
         const canvas = canvasRef.current;
@@ -142,7 +175,6 @@ function MultipleThumb({ image, classId, onUpdateImage, currentClassNames }) {
     };
 
     const handleMouseDown = (e) => { setIsDrawing(true); setStartPt(getOriginalCoords(e)); };
-
     const handleMouseMove = (e) => {
         if (!isDrawing || !startPt) return;
         const canvas = canvasRef.current;
@@ -152,7 +184,6 @@ function MultipleThumb({ image, classId, onUpdateImage, currentClassNames }) {
         const tempBox = { x: startPt.x, y: startPt.y, w: currentPt.x - startPt.x, h: currentPt.y - startPt.y, classId: classId };
         drawMultipleCanvasContent(ctx, image, tempBox);
     };
-
     const handleMouseUp = (e) => {
         if (!isDrawing || !startPt) return;
         setIsDrawing(false);
@@ -161,13 +192,26 @@ function MultipleThumb({ image, classId, onUpdateImage, currentClassNames }) {
         let [x1, y1, x2, y2] = [startPt.x, startPt.y, endPt.x, endPt.y];
         const newBox = { classId, x: Math.min(x1, x2), y: Math.min(y1, y2), w: Math.abs(x1 - x2), h: Math.abs(y1 - y2) };
         if (newBox.w > 2 && newBox.h > 2) {
-            onUpdateImage({ ...image, boxes: [...image.boxes, newBox] });
+            const updatedImage = { ...image };
+            updatedImage.annotationSets[currentAnnotationSetIndex].boxes.push(newBox);
+            onUpdateImage(updatedImage, currentAnnotationSetIndex);
         }
         setStartPt(null);
     };
 
     return (
         <div style={styles.thumb.card}>
+            {React.cloneElement(annotationNavUI, {
+                imageId: image.id,
+                sets: image.annotationSets,
+                currentIndex: currentAnnotationSetIndex,
+                onNavigate: (dir) => {
+                    const newIndex = dir === 'prev'
+                        ? (currentAnnotationSetIndex - 1 + image.annotationSets.length) % image.annotationSets.length
+                        : (currentAnnotationSetIndex + 1) % image.annotationSets.length;
+                    setCurrentAnnotationSetIndex(newIndex);
+                }
+            })}
             <div style={styles.thumb.canvasContainer}>
                 <canvas ref={canvasRef} width={MULTIPLE_MODE_CANVAS_WIDTH} height={MULTIPLE_MODE_CANVAS_HEIGHT} style={styles.thumb.canvas} onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} />
             </div>
@@ -181,6 +225,9 @@ function MultipleThumb({ image, classId, onUpdateImage, currentClassNames }) {
 // --- Main ImageFilter Component ---
 function ImageFilter() {
     // --- STATE MANAGEMENT ---
+    const [models, setModels] = useState([]);
+    const [isGenerating, setIsGenerating] = useState(false);
+    const [currentAnnotationSetIndex, setCurrentAnnotationSetIndex] = useState(0);
     const [selectedFiles, setSelectedFiles] = useState([]);
     const [datasetName, setDatasetName] = useState("");
     const [searchQuery, setSearchQuery] = useState("");
@@ -206,6 +253,54 @@ function ImageFilter() {
     const autosaveTimeoutRef = useRef(null);
 
     // --- DATA FETCHING & API CALLS ---
+    useEffect(() => {
+        const fetchModels = async () => {
+            try {
+                const res = await fetch(`${BASE_URL}/api/models`);
+                const data = await res.json();
+                setModels(data);
+            } catch (err) {
+                console.error("Failed to fetch models:", err);
+            }
+        };
+        fetchModels();
+    }, []);
+
+    const handleGenerateAnnotations = async (imageId, model_version) => {
+        if (!model_version || !imageId) return;
+        setIsGenerating(true);
+        try {
+            const res = await fetch(`${BASE_URL}/api/images/${imageId}/generate_annotations`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ model_version })
+            });
+            if (!res.ok) throw new Error(await res.text());
+            const { annotation_set } = await res.json();
+            
+            setImages(prevImages => {
+                const newImages = [...prevImages];
+                const imgIndex = newImages.findIndex(img => img.id === imageId);
+                if (imgIndex !== -1) {
+                    const existingSetIndex = newImages[imgIndex].annotationSets.findIndex(s => s.name === annotation_set.name);
+                    if (existingSetIndex !== -1) {
+                        newImages[imgIndex].annotationSets[existingSetIndex] = annotation_set;
+                        if (mode === 'single') setCurrentAnnotationSetIndex(existingSetIndex);
+                    } else {
+                        newImages[imgIndex].annotationSets.push(annotation_set);
+                        if (mode === 'single') setCurrentAnnotationSetIndex(newImages[imgIndex].annotationSets.length - 1);
+                    }
+                }
+                return newImages;
+            });
+
+        } catch (err) {
+            alert(`Failed to generate annotations: ${err.message}`);
+        } finally {
+            setIsGenerating(false);
+        }
+    };
+
     const handleUploadSubmit = async (e) => {
         e.preventDefault();
         if (selectedFiles.length === 0 || !datasetName.trim()) {
@@ -266,6 +361,7 @@ function ImageFilter() {
             }
             setHistory([]);
             setHistoryIndex(-1);
+            setCurrentAnnotationSetIndex(0);
         } catch (err) {
             console.error("Fetch images error:", err);
             alert(err.message);
@@ -289,23 +385,22 @@ function ImageFilter() {
         else { setPage(1); }
     };
     
-    useEffect(() => { setPage(1); }, [mode]);
+    useEffect(() => { setPage(1); setCurrentAnnotationSetIndex(0); }, [mode]);
 
     // --- AUTOSAVE LOGIC ---
-    const saveAnnotations = useCallback(async (imageToSave) => {
-        if (!imageToSave) return;
+    const saveAnnotations = useCallback(async (imageToSave, setIndex) => {
+        if (!imageToSave || !imageToSave.annotationSets[setIndex]) return;
+        const setToSave = imageToSave.annotationSets[setIndex];
+        if (setToSave.id === null) {
+            console.log("Skipping save for new, empty default set.");
+            return;
+        }
         setAutosaveStatus("Saving...");
         try {
-            const { dataset_name, filename, boxes, original_width, original_height } = imageToSave;
-            const body = {
-                boxes,
-                imageWidth: original_width,
-                imageHeight: original_height
-            };
-            const res = await fetch(`${BASE_URL}/api/annotations/${dataset_name}/${filename}`, {
+            const res = await fetch(`${BASE_URL}/api/annotations/${setToSave.id}`, {
                 method: "PUT",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(body)
+                body: JSON.stringify({ boxes: setToSave.boxes })
             });
             if (!res.ok) throw new Error(await res.text());
             setAutosaveStatus("Saved");
@@ -315,12 +410,12 @@ function ImageFilter() {
         }
     }, []);
 
-    const triggerAutosave = useCallback((imageToSave) => {
+    const triggerAutosave = useCallback((imageToSave, setIndex) => {
         if (autosaveTimeoutRef.current) {
             clearTimeout(autosaveTimeoutRef.current);
         }
         autosaveTimeoutRef.current = setTimeout(() => {
-            saveAnnotations(imageToSave);
+            saveAnnotations(imageToSave, setIndex);
         }, AUTOSAVE_DELAY);
     }, [saveAnnotations]);
 
@@ -336,13 +431,14 @@ function ImageFilter() {
             const prevBoxes = history[historyIndex - 1];
             setImages(prev => {
                 const updated = [...prev];
-                updated[currentIndex] = { ...updated[currentIndex], boxes: prevBoxes };
-                triggerAutosave(updated[currentIndex]);
+                const imageToUpdate = updated[currentIndex];
+                imageToUpdate.annotationSets[currentAnnotationSetIndex].boxes = prevBoxes;
+                triggerAutosave(imageToUpdate, currentAnnotationSetIndex);
                 return updated;
             });
             setHistoryIndex(prevIndex => prevIndex - 1);
         }
-    }, [history, historyIndex, currentIndex, triggerAutosave]);
+    }, [history, historyIndex, currentIndex, currentAnnotationSetIndex, triggerAutosave]);
 
     const drawSingleCanvasContent = useCallback((ctx, img, tempBox = null) => {
         ctx.clearRect(0, 0, SINGLE_MODE_CANVAS_WIDTH, SINGLE_MODE_CANVAS_HEIGHT);
@@ -361,10 +457,13 @@ function ImageFilter() {
         const offsetY = (SINGLE_MODE_CANVAS_HEIGHT - drawHeight) / 2;
         const scaleX = drawWidth / originalWidth;
         const scaleY = drawHeight / originalHeight;
+        
+        const boxes = img.annotationSets[currentAnnotationSetIndex]?.boxes || [];
+
         ctx.drawImage(imgCacheRef.current, offsetX, offsetY, drawWidth, drawHeight);
-        img.boxes.forEach(box => drawBox(ctx, box, offsetX, offsetY, scaleX, scaleY, false, false, currentClassNames));
+        boxes.forEach(box => drawBox(ctx, box, offsetX, offsetY, scaleX, scaleY, false, false, currentClassNames));
         if (tempBox) drawBox(ctx, tempBox, offsetX, offsetY, scaleX, scaleY, true, false, currentClassNames);
-    }, [currentClassNames]);
+    }, [currentClassNames, currentAnnotationSetIndex]);
 
     useEffect(() => {
         if (mode === 'single' && images.length > 0) {
@@ -426,12 +525,15 @@ function ImageFilter() {
         let [x1, y1, x2, y2] = [startPt.x, startPt.y, endPt.x, endPt.y];
         const newBox = { classId: currentClassId, x: Math.min(x1, x2), y: Math.min(y1, y2), w: Math.abs(x1 - x2), h: Math.abs(y1 - y2) };
         if (newBox.w > 2 && newBox.h > 2) {
-            const updatedBoxes = [...images[currentIndex].boxes, newBox];
-            saveStateForUndo(updatedBoxes);
             setImages(prev => {
                 const updated = [...prev];
-                updated[currentIndex] = { ...updated[currentIndex], boxes: updatedBoxes };
-                triggerAutosave(updated[currentIndex]);
+                const imageToUpdate = updated[currentIndex];
+                const currentSet = imageToUpdate.annotationSets[currentAnnotationSetIndex];
+                const updatedBoxes = [...currentSet.boxes, newBox];
+                currentSet.boxes = updatedBoxes;
+                
+                saveStateForUndo(updatedBoxes);
+                triggerAutosave(imageToUpdate, currentAnnotationSetIndex);
                 return updated;
             });
         }
@@ -496,10 +598,21 @@ function ImageFilter() {
                         
                         <div style={styles.workspaceLayout}>
                             <div style={styles.workspaceContentWrapper}>
-                                {mode === 'single' && (
-                                    <div style={styles.annotationControls}>
-                                        <button onClick={handleUndo} disabled={historyIndex <= 0} style={historyIndex <= 0 ? styles.buttonDisabled : styles.button}>Undo</button>
-                                    </div>
+                                {mode === 'single' && images.length > 0 && (
+                                    <AnnotationNavigator
+                                        imageId={images[currentIndex].id}
+                                        sets={images[currentIndex].annotationSets}
+                                        currentIndex={currentAnnotationSetIndex}
+                                        onNavigate={(dir) => {
+                                            const newIndex = dir === 'prev'
+                                                ? (currentAnnotationSetIndex - 1 + images[currentIndex].annotationSets.length) % images[currentIndex].annotationSets.length
+                                                : (currentAnnotationSetIndex + 1) % images[currentIndex].annotationSets.length;
+                                            setCurrentAnnotationSetIndex(newIndex);
+                                        }}
+                                        onGenerate={handleGenerateAnnotations}
+                                        models={models}
+                                        isGenerating={isGenerating}
+                                    />
                                 )}
                                 
                                 <div style={styles.workspaceContent}>
@@ -518,13 +631,20 @@ function ImageFilter() {
                                                     key={img.id} 
                                                     image={img} 
                                                     classId={currentClassId} 
-                                                    onUpdateImage={(updatedImage) => {
+                                                    onUpdateImage={(updatedImage, setIndex) => {
                                                         const newImages = [...images];
                                                         newImages[idx] = updatedImage;
                                                         setImages(newImages);
-                                                        triggerAutosave(updatedImage);
+                                                        triggerAutosave(updatedImage, setIndex);
                                                     }} 
                                                     currentClassNames={currentClassNames}
+                                                    annotationNavUI={
+                                                        <AnnotationNavigator
+                                                            models={models}
+                                                            isGenerating={isGenerating}
+                                                            onGenerate={handleGenerateAnnotations}
+                                                        />
+                                                    }
                                                 />
                                             ))}
                                         </div>
@@ -610,6 +730,11 @@ const styles = {
         button: { width: '100%', padding: '0.6rem 1rem', textAlign: 'left', border: '1px solid #CED4DA', backgroundColor: '#FFFFFF', borderRadius: '4px', cursor: 'pointer', transition: 'background-color 0.2s, border-color 0.2s' },
         buttonActive: { width: '100%', padding: '0.6rem 1rem', textAlign: 'left', border: '1px solid #B71C1C', backgroundColor: '#FBE9E7', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', color: '#B71C1C' },
         placeholder: { color: '#6C757D', fontSize: '0.9rem' }
+    },
+    annotationNav: {
+        container: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#F8F9FA', padding: '0.5rem 1rem', borderRadius: '4px', border: '1px solid #DEE2E6', marginBottom: '1rem' },
+        navControls: { display: 'flex', alignItems: 'center', gap: '0.5rem' },
+        generateControls: { display: 'flex', alignItems: 'center', gap: '0.5rem' },
     }
 };
 
