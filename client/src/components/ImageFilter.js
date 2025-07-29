@@ -2,16 +2,21 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 
 // --- CONFIGURATION & CONSTANTS ---
 const BASE_URL = "http://127.0.0.1:5000";
-const SINGLE_MODE_CANVAS_WIDTH = 1200;
-const SINGLE_MODE_CANVAS_HEIGHT = 1600;
-const MULTIPLE_MODE_CANVAS_WIDTH = 320;
-const MULTIPLE_MODE_CANVAS_HEIGHT = 320;
-const CLASS_COLORS = ["#FF0000", "#00FF00", "#0000FF", "#FFFF00", "#00FFFF", "#FF00FF", "#C0C0C0", "#808080", "#800000", "#808000", "#008000", "#800080", "#008080", "#000080", "#FF4500", "#DA70D6"];
+const SINGLE_MODE_CANVAS_WIDTH = 1400; 
+const SINGLE_MODE_CANVAS_HEIGHT = 1400;
+const MULTIPLE_MODE_CANVAS_WIDTH = 700;
+const MULTIPLE_MODE_CANVAS_HEIGHT = 700;
+const CLASS_COLORS = [ 
+    "#E53935", "#1E88E5", "#43A047", "#FDD835", "#8E24AA", "#FB8C00",
+    "#00ACC1", "#D81B60", "#5E35B1", "#039BE5", "#7CB342", "#6D4C41",
+    "#546E7A", "#F4511E", "#00897B", "#3949AB"
+];
 const ANNOTATION_LINE_WIDTH = 2;
 const ANNOTATION_FILL_ALPHA = 0.2;
 const ANNOTATION_FONT_SIZE = 16;
-const ANNOTATION_THUMB_FONT_SIZE = 10;
+const ANNOTATION_THUMB_FONT_SIZE = 12;
 const TEMP_ANNOTATION_COLOR = "rgba(173, 216, 230, 0.7)";
+const AUTOSAVE_DELAY = 1500; // 1.5 seconds
 
 // --- GLOBAL HELPER: Draw Bounding Box ---
 const drawBox = (ctx, box, offsetX, offsetY, scaleX, scaleY, isTemp, isThumb, classNamesList) => {
@@ -22,20 +27,24 @@ const drawBox = (ctx, box, offsetX, offsetY, scaleX, scaleY, isTemp, isThumb, cl
     const scaledW = box.w * scaleX;
     const scaledH = box.h * scaleY;
     ctx.strokeStyle = isTemp ? TEMP_ANNOTATION_COLOR : color;
-    ctx.lineWidth = isTemp ? 2 : (isThumb ? 1 : ANNOTATION_LINE_WIDTH);
+    ctx.lineWidth = isTemp ? 2 : (isThumb ? 1.5 : ANNOTATION_LINE_WIDTH);
     ctx.strokeRect(scaledX, scaledY, scaledW, scaledH);
     if (!isTemp) {
         ctx.fillStyle = `${color}${Math.round(ANNOTATION_FILL_ALPHA * 255).toString(16).padStart(2, '0')}`;
         ctx.fillRect(scaledX, scaledY, scaledW, scaledH);
-        const fontSize = isThumb ? ANNOTATION_THUMB_FONT_SIZE : ANNOTATION_FONT_SIZE;
+        
         if (label && ((scaledW > 30 && scaledH > 20) || !isThumb)) {
-            ctx.fillStyle = color;
-            ctx.font = `${fontSize}px Arial`;
+            const fontSize = isThumb ? ANNOTATION_THUMB_FONT_SIZE : ANNOTATION_FONT_SIZE;
+            ctx.font = `bold ${fontSize}px Arial`;
             const textMetrics = ctx.measureText(label);
+
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
             ctx.fillRect(scaledX, scaledY, textMetrics.width + 8, fontSize + 4);
-            ctx.fillStyle = "white";
+            
+            ctx.fillStyle = "#000000";
             ctx.fillText(label, scaledX + 4, scaledY + fontSize);
         }
+
         if (!isThumb) {
             ctx.fillStyle = "red";
             ctx.fillRect(scaledX + scaledW - 15, scaledY, 15, 15);
@@ -46,8 +55,37 @@ const drawBox = (ctx, box, offsetX, offsetY, scaleX, scaleY, isTemp, isThumb, cl
     }
 };
 
+// --- Child Component: Classes Panel ---
+function ClassesPanel({ classNames, currentClassId, onClassSelect }) {
+    if (!classNames || classNames.length === 0) {
+        return (
+            <div style={styles.classesPanel.container}>
+                <h3 style={styles.classesPanel.title}>Classes</h3>
+                <p style={styles.classesPanel.placeholder}>Select a dataset to see classes.</p>
+            </div>
+        );
+    }
+    return (
+        <div style={styles.classesPanel.container}>
+            <h3 style={styles.classesPanel.title}>Classes</h3>
+            <div style={styles.classesPanel.list}>
+                {classNames.map((name, idx) => (
+                    <button
+                        key={idx}
+                        onClick={() => onClassSelect(idx)}
+                        style={idx === currentClassId ? styles.classesPanel.buttonActive : styles.classesPanel.button}
+                    >
+                        {name}
+                    </button>
+                ))}
+            </div>
+        </div>
+    );
+}
+
+
 // --- Child Component: Multiple View Thumbnail ---
-function MultipleThumb({ image, classId, onDiscard, onUpdateImage, currentClassNames }) {
+function MultipleThumb({ image, classId, onUpdateImage, currentClassNames }) {
     const canvasRef = useRef(null);
     const [isDrawing, setIsDrawing] = useState(false);
     const [startPt, setStartPt] = useState(null);
@@ -128,17 +166,6 @@ function MultipleThumb({ image, classId, onDiscard, onUpdateImage, currentClassN
         setStartPt(null);
     };
 
-    const handleSave = async () => {
-        try {
-            const body = { boxes: image.boxes, imageWidth: image.original_width, imageHeight: image.original_height };
-            const res = await fetch(`${BASE_URL}/api/annotations/${image.dataset_name}/${image.filename}`, {
-                method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
-            });
-            if (!res.ok) throw new Error(await res.text());
-            alert("Saved: " + image.original_name);
-        } catch (err) { alert("Error saving: " + err.message); }
-    };
-
     return (
         <div style={styles.thumb.card}>
             <div style={styles.thumb.canvasContainer}>
@@ -146,12 +173,6 @@ function MultipleThumb({ image, classId, onDiscard, onUpdateImage, currentClassN
             </div>
             <div style={styles.thumb.info}>
                 <p style={styles.thumb.filename}>{image.original_name}</p>
-                <div style={styles.thumb.buttonGroup}>
-                    <button onClick={handleSave} style={styles.button}>Save</button>
-                    <button style={image.status === "discarded" ? styles.buttonDisabled : styles.buttonDiscard} onClick={onDiscard} disabled={image.status === "discarded"}>
-                        {image.status === "discarded" ? "Discarded" : "Discard"}
-                    </button>
-                </div>
             </div>
         </div>
     );
@@ -179,8 +200,10 @@ function ImageFilter() {
     const [currentClassId, setCurrentClassId] = useState(0);
     const [history, setHistory] = useState([]);
     const [historyIndex, setHistoryIndex] = useState(-1);
+    const [autosaveStatus, setAutosaveStatus] = useState("Saved");
     const singleCanvasRef = useRef(null);
     const imgCacheRef = useRef(new Image());
+    const autosaveTimeoutRef = useRef(null);
 
     // --- DATA FETCHING & API CALLS ---
     const handleUploadSubmit = async (e) => {
@@ -268,6 +291,39 @@ function ImageFilter() {
     
     useEffect(() => { setPage(1); }, [mode]);
 
+    // --- AUTOSAVE LOGIC ---
+    const saveAnnotations = useCallback(async (imageToSave) => {
+        if (!imageToSave) return;
+        setAutosaveStatus("Saving...");
+        try {
+            const { dataset_name, filename, boxes, original_width, original_height } = imageToSave;
+            const body = {
+                boxes,
+                imageWidth: original_width,
+                imageHeight: original_height
+            };
+            const res = await fetch(`${BASE_URL}/api/annotations/${dataset_name}/${filename}`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(body)
+            });
+            if (!res.ok) throw new Error(await res.text());
+            setAutosaveStatus("Saved");
+        } catch (err) {
+            console.error("Autosave error:", err);
+            setAutosaveStatus("Error");
+        }
+    }, []);
+
+    const triggerAutosave = useCallback((imageToSave) => {
+        if (autosaveTimeoutRef.current) {
+            clearTimeout(autosaveTimeoutRef.current);
+        }
+        autosaveTimeoutRef.current = setTimeout(() => {
+            saveAnnotations(imageToSave);
+        }, AUTOSAVE_DELAY);
+    }, [saveAnnotations]);
+
     // --- SINGLE MODE ANNOTATION LOGIC ---
     const saveStateForUndo = useCallback((updatedBoxes) => {
         const newHistory = history.slice(0, historyIndex + 1);
@@ -281,11 +337,12 @@ function ImageFilter() {
             setImages(prev => {
                 const updated = [...prev];
                 updated[currentIndex] = { ...updated[currentIndex], boxes: prevBoxes };
+                triggerAutosave(updated[currentIndex]);
                 return updated;
             });
             setHistoryIndex(prevIndex => prevIndex - 1);
         }
-    }, [history, historyIndex, currentIndex]);
+    }, [history, historyIndex, currentIndex, triggerAutosave]);
 
     const drawSingleCanvasContent = useCallback((ctx, img, tempBox = null) => {
         ctx.clearRect(0, 0, SINGLE_MODE_CANVAS_WIDTH, SINGLE_MODE_CANVAS_HEIGHT);
@@ -374,34 +431,11 @@ function ImageFilter() {
             setImages(prev => {
                 const updated = [...prev];
                 updated[currentIndex] = { ...updated[currentIndex], boxes: updatedBoxes };
+                triggerAutosave(updated[currentIndex]);
                 return updated;
             });
         }
         setStartPt(null);
-    };
-
-    const saveSingleAnnotations = async () => {
-        if (images.length === 0) return;
-        const img = images[currentIndex];
-        try {
-            const body = { boxes: img.boxes, imageWidth: img.original_width, imageHeight: img.original_height, };
-            const res = await fetch(`${BASE_URL}/api/annotations/${img.dataset_name}/${img.filename}`, {
-                method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
-            });
-            if (!res.ok) throw new Error(await res.text());
-            alert("Saved annotations for " + img.original_name);
-        } catch (err) { alert("Save failed: " + err.message); }
-    };
-    
-    const handleDiscard = async (image) => {
-        try {
-            const res = await fetch(`${BASE_URL}/api/images/${image.id}/discard`, { method: "PUT" });
-            if (!res.ok) throw new Error(await res.text());
-            const updatedImages = images.map(i => i.id === image.id ? { ...i, status: 'discarded' } : i);
-            setImages(updatedImages);
-        } catch (err) {
-            alert(`Discard failed: ${err.message}`);
-        }
     };
 
     // --- JSX RENDERING ---
@@ -410,12 +444,15 @@ function ImageFilter() {
             {isLoading && (
                 <div style={styles.loadingOverlay}>
                     <div style={styles.spinner}></div>
-                    <p>Loading...</p>
+                    <p style={{color: '#343A40'}}>Loading...</p>
                 </div>
             )}
 
             <header style={styles.header}>
-                <h1>🖼️ Annotation Tool</h1>
+                <h1 style={styles.headerTitle}>🖼️ Annotation Tool</h1>
+                <div style={styles.autosaveStatus}>
+                    {autosaveStatus}
+                </div>
             </header>
 
             <main style={styles.main}>
@@ -456,35 +493,49 @@ function ImageFilter() {
                                 <button onClick={() => setMode("multiple")} style={mode === 'multiple' ? styles.buttonActive : styles.button}>Multiple</button>
                             </div>
                         </div>
-
-                        {mode === 'single' && (
-                            <div style={styles.annotationControls}>
-                                <label>Class:</label>
-                                <select value={currentClassId} onChange={(e) => setCurrentClassId(Number(e.target.value))} style={currentClassNames.length === 0 ? { ...styles.input, ...styles.inputDisabled } : styles.input} disabled={currentClassNames.length === 0}>
-                                    {currentClassNames.length === 0 && <option>No classes available</option>}
-                                    {currentClassNames.map((name, idx) => (<option key={idx} value={idx}>{name}</option>))}
-                                </select>
-                                <button onClick={handleUndo} disabled={historyIndex <= 0} style={historyIndex <= 0 ? styles.buttonDisabled : styles.button}>Undo</button>
-                                <button onClick={saveSingleAnnotations} style={styles.button}>Save Annotations</button>
-                            </div>
-                        )}
                         
-                        <div style={styles.workspaceContent}>
-                            {images.length === 0 && !isLoading && <p>No images found. Try adjusting your filters or uploading a new dataset.</p>}
-                            
-                            {mode === 'single' && images.length > 0 && (
-                                <div style={styles.singleViewContainer}>
-                                    <canvas ref={singleCanvasRef} width={SINGLE_MODE_CANVAS_WIDTH} height={SINGLE_MODE_CANVAS_HEIGHT} style={styles.singleCanvas} onMouseDown={handleSingleMouseDown} onMouseMove={handleSingleMouseMove} onMouseUp={handleSingleMouseUp}/>
-                                </div>
-                            )}
+                        <div style={styles.workspaceLayout}>
+                            <div style={styles.workspaceContentWrapper}>
+                                {mode === 'single' && (
+                                    <div style={styles.annotationControls}>
+                                        <button onClick={handleUndo} disabled={historyIndex <= 0} style={historyIndex <= 0 ? styles.buttonDisabled : styles.button}>Undo</button>
+                                    </div>
+                                )}
+                                
+                                <div style={styles.workspaceContent}>
+                                    {images.length === 0 && !isLoading && <p>No images found. Try adjusting your filters or uploading a new dataset.</p>}
+                                    
+                                    {mode === 'single' && images.length > 0 && (
+                                        <div style={styles.singleViewContainer}>
+                                            <canvas ref={singleCanvasRef} width={SINGLE_MODE_CANVAS_WIDTH} height={SINGLE_MODE_CANVAS_HEIGHT} style={styles.singleCanvas} onMouseDown={handleSingleMouseDown} onMouseMove={handleSingleMouseMove} onMouseUp={handleSingleMouseUp}/>
+                                        </div>
+                                    )}
 
-                            {mode === 'multiple' && images.length > 0 && (
-                                <div style={styles.imageGrid}>
-                                    {images.map((img, idx) => (
-                                        <MultipleThumb key={img.id} image={img} classId={currentClassId} onDiscard={() => handleDiscard(img)} onUpdateImage={(updated) => setImages(prev => { const c = [...prev]; c[idx] = updated; return c; })} currentClassNames={currentClassNames}/>
-                                    ))}
+                                    {mode === 'multiple' && images.length > 0 && (
+                                        <div style={styles.imageGrid}>
+                                            {images.map((img, idx) => (
+                                                <MultipleThumb 
+                                                    key={img.id} 
+                                                    image={img} 
+                                                    classId={currentClassId} 
+                                                    onUpdateImage={(updatedImage) => {
+                                                        const newImages = [...images];
+                                                        newImages[idx] = updatedImage;
+                                                        setImages(newImages);
+                                                        triggerAutosave(updatedImage);
+                                                    }} 
+                                                    currentClassNames={currentClassNames}
+                                                />
+                                            ))}
+                                        </div>
+                                    )}
                                 </div>
-                            )}
+                            </div>
+                            <ClassesPanel 
+                                classNames={currentClassNames}
+                                currentClassId={currentClassId}
+                                onClassSelect={setCurrentClassId}
+                            />
                         </div>
                         
                         <div style={styles.pagination}>
@@ -501,43 +552,81 @@ function ImageFilter() {
 
 // --- STYLES (CSS-in-JS) ---
 const styles = {
-    container: { fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif", backgroundColor: "#f0f2f5", minHeight: "100vh" },
-    header: { backgroundColor: "#ffffff", padding: "1rem 2rem", borderBottom: "1px solid #ddd" },
-    main: { display: "flex", padding: "1rem", gap: "1rem" },
-    leftPanel: { flex: "0 0 350px", display: "flex", flexDirection: "column", gap: "1rem" },
+    container: { fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif", backgroundColor: "#F8F9FA", minHeight: "100vh" },
+    header: { backgroundColor: "#FFFFFF", padding: "1rem 2rem", borderBottom: "1px solid #DEE2E6", boxShadow: "0 2px 4px rgba(0,0,0,0.05)", display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
+    headerTitle: { color: '#D32F2F', margin: 0, fontWeight: 600 },
+    autosaveStatus: { color: '#6C757D', fontSize: '0.9rem', fontStyle: 'italic' },
+    main: { display: "flex", padding: "1.5rem", gap: "1.5rem", alignItems: 'flex-start' },
+    leftPanel: { flex: "0 0 350px", display: "flex", flexDirection: "column", gap: "1.5rem" },
     rightPanel: { flex: 1, minWidth: 0 },
-    card: { backgroundColor: "#ffffff", borderRadius: "8px", padding: "1.5rem", boxShadow: "0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24)" },
-    cardTitle: { marginTop: 0, marginBottom: "1rem", color: "#333" },
+    card: { backgroundColor: "#FFFFFF", borderRadius: "8px", padding: "1.5rem", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" },
+    cardTitle: { marginTop: 0, marginBottom: "1.5rem", color: "#343A40", borderBottom: '1px solid #E9ECEF', paddingBottom: '0.75rem' },
     form: { display: "flex", flexDirection: "column", gap: "1rem" },
-    input: { padding: "0.75rem", border: "1px solid #ccc", borderRadius: "4px", fontSize: "1rem", backgroundColor: "#fff" },
-    inputDisabled: { backgroundColor: "#e9ecef", color: "#6c757d", cursor: "not-allowed" },
-    button: { padding: "0.75rem 1.5rem", border: "none", borderRadius: "4px", backgroundColor: "#007bff", color: "white", fontSize: "1rem", cursor: "pointer", transition: "background-color 0.2s" },
-    buttonActive: { padding: "0.75rem 1.5rem", border: "none", borderRadius: "4px", backgroundColor: "#0056b3", color: "white", fontSize: "1rem", cursor: "pointer" },
-    buttonDisabled: { padding: "0.75rem 1.5rem", border: "none", borderRadius: "4px", backgroundColor: "#ccc", color: "#666", cursor: "not-allowed" },
-    buttonDiscard: { padding: "0.5rem 1rem", border: "none", borderRadius: "4px", backgroundColor: "#dc3545", color: "white", cursor: "pointer" },
-    workspaceHeader: { display: "flex", justifyContent: "space-between", alignItems: "center" },
+    input: { padding: "0.75rem", border: "1px solid #CED4DA", borderRadius: "4px", fontSize: "1rem", backgroundColor: "#FFFFFF", transition: 'border-color 0.2s, box-shadow 0.2s' },
+    inputDisabled: { backgroundColor: "#E9ECEF", color: "#6C757D", cursor: "not-allowed" },
+    button: { padding: "0.75rem 1.5rem", border: "none", borderRadius: "4px", backgroundColor: "#D32F2F", color: "white", fontSize: "1rem", cursor: "pointer", transition: "background-color 0.2s", fontWeight: '500' },
+    buttonActive: { padding: "0.75rem 1.5rem", border: "none", borderRadius: "4px", backgroundColor: "#B71C1C", color: "white", fontSize: "1rem", cursor: "pointer", fontWeight: '500' },
+    buttonDisabled: { padding: "0.75rem 1.5rem", border: "none", borderRadius: "4px", backgroundColor: "#E9ECEF", color: "#6C757D", cursor: "not-allowed", fontWeight: '500' },
+    workspaceHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: 'wrap', gap: '1rem' },
     viewToggle: { display: "flex", gap: "0.5rem" },
-    workspaceContent: { marginTop: "1rem", minHeight: "60vh", padding: "1rem", border: "1px dashed #ccc", borderRadius: "4px" },
-    imageGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: "1rem" },
-    singleViewContainer: { display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%', height: '100%' },
-    singleCanvas: { maxWidth: '100%', maxHeight: '65vh', objectFit: 'contain', cursor: 'crosshair' },
-    pagination: { marginTop: "1rem", display: "flex", justifyContent: "center", alignItems: "center", gap: "1rem" },
-    loadingOverlay: { position: "fixed", top: 0, left: 0, width: "100%", height: "100%", backgroundColor: "rgba(0,0,0,0.7)", display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", color: "white", zIndex: 1000 },
-    spinner: { border: "8px solid #f3f3f3", borderTop: "8px solid #3498db", borderRadius: "50%", width: "60px", height: "60px", animation: "spin 1s linear infinite", marginBottom: "1rem" },
+    workspaceLayout: { display: 'flex', gap: '1.5rem', marginTop: '1rem' },
+    workspaceContentWrapper: { flex: 1, minWidth: 0 },
+    workspaceContent: { minHeight: "60vh", padding: "1rem", border: "1px dashed #DEE2E6", borderRadius: "4px", backgroundColor: '#F8F9FA' },
+    imageGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(600px, 1fr))", gap: "1.5rem" },
+    singleViewContainer: { display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%', height: '75vh' },
+    singleCanvas: { maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', cursor: 'crosshair', borderRadius: '4px', boxShadow: '0 4px 8px rgba(0,0,0,0.1)' },
+    pagination: { marginTop: "1.5rem", display: "flex", justifyContent: "center", alignItems: "center", gap: "1rem", color: '#495057' },
+    loadingOverlay: { position: "fixed", top: 0, left: 0, width: "100%", height: "100%", backgroundColor: "rgba(255,255,255,0.8)", display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", zIndex: 1000 },
+    spinner: { border: "8px solid #f3f3f3", borderTop: "8px solid #D32F2F", borderRadius: "50%", width: "60px", height: "60px", animation: "spin 1s linear infinite", marginBottom: "1rem" },
     thumb: {
-        card: { display: "flex", flexDirection: "column", alignItems: "center", backgroundColor: "#f9f9f9", borderRadius: "8px", boxShadow: "0 2px 4px rgba(0,0,0,0.1)", overflow: "hidden" },
-        canvasContainer: { width: "100%", aspectRatio: "1 / 1", borderBottom: "1px solid #eee" },
+        card: { display: "flex", flexDirection: "column", alignItems: "center", backgroundColor: "#FFFFFF", borderRadius: "8px", boxShadow: "0 2px 4px rgba(0,0,0,0.1)", overflow: "hidden", transition: 'transform 0.2s, box-shadow 0.2s' },
+        canvasContainer: { width: "100%", aspectRatio: "1 / 1", borderBottom: "1px solid #E9ECEF" },
         canvas: { display: "block", width: "100%", height: "100%", cursor: 'crosshair' },
-        info: { padding: "0.75rem", width: "100%", textAlign: "center" },
-        filename: { margin: "0 0 0.5rem 0", fontWeight: "bold", wordBreak: "break-all" },
-        buttonGroup: { display: "flex", gap: "0.5rem", justifyContent: "center" }
+        info: { padding: "0.75rem", width: "100%", textAlign: "center", backgroundColor: '#F8F9FA' },
+        filename: { margin: 0, fontWeight: "500", color: '#495057', wordBreak: "break-all" },
     },
-    annotationControls: { display: 'flex', gap: '1rem', alignItems: 'center', padding: '1rem', backgroundColor: '#f8f9fa', borderRadius: '4px', marginBottom: '1rem', flexWrap: 'wrap' }
+    annotationControls: { display: 'flex', gap: '1rem', alignItems: 'center', paddingBottom: '1rem', flexWrap: 'wrap' },
+    classesPanel: {
+        container: { 
+            flex: '0 0 200px', 
+            borderLeft: '1px solid #DEE2E6', 
+            paddingLeft: '1.5rem',
+            position: 'sticky',
+            top: '1.5rem',
+            alignSelf: 'flex-start',
+            height: 'calc(100vh - 10rem)',
+            display: 'flex',
+            flexDirection: 'column',
+        },
+        title: { marginTop: 0, marginBottom: '1rem', color: '#495057', fontSize: '1.1rem' },
+        list: { 
+            flex: 1,
+            minHeight: 0,
+            overflowY: 'auto', 
+            display: 'flex', 
+            flexDirection: 'column', 
+            gap: '0.5rem' 
+        },
+        button: { width: '100%', padding: '0.6rem 1rem', textAlign: 'left', border: '1px solid #CED4DA', backgroundColor: '#FFFFFF', borderRadius: '4px', cursor: 'pointer', transition: 'background-color 0.2s, border-color 0.2s' },
+        buttonActive: { width: '100%', padding: '0.6rem 1rem', textAlign: 'left', border: '1px solid #B71C1C', backgroundColor: '#FBE9E7', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', color: '#B71C1C' },
+        placeholder: { color: '#6C757D', fontSize: '0.9rem' }
+    }
 };
 
 const styleSheet = document.createElement("style");
 styleSheet.type = "text/css";
-styleSheet.innerText = `@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`;
+styleSheet.innerText = `
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    .button-style:hover { background-color: #B71C1C !important; }
+    .input-style:focus { border-color: #D32F2F; box-shadow: 0 0 0 2px rgba(211, 47, 47, 0.25); }
+    .thumb-card:hover { transform: translateY(-5px); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+`;
 document.head.appendChild(styleSheet);
+
+// Add class names to elements for CSS targeting
+styles.button.className = 'button-style';
+styles.input.className = 'input-style';
+styles.thumb.card.className = 'thumb-card';
+
 
 export default ImageFilter;
