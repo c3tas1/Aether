@@ -477,7 +477,7 @@ function ImageFilter() {
                 drawSingleCanvasContent(ctx, img);
             }
         }
-    }, [mode, images, currentIndex, drawSingleCanvasContent]);
+    }, [mode, images, currentIndex, drawSingleCanvasContent, currentAnnotationSetIndex]);
 
     const getOriginalCoordsSingle = (e) => {
         const canvas = singleCanvasRef.current;
@@ -500,9 +500,67 @@ function ImageFilter() {
         const canvasY = (e.clientY - rect.top) * (SINGLE_MODE_CANVAS_HEIGHT / rect.height);
         return { x: (canvasX - offsetX) * (originalWidth / drawWidth), y: (canvasY - offsetY) * (originalHeight / drawHeight) };
     };
+    
+    const deleteAnnotation = useCallback((e) => {
+        const canvas = singleCanvasRef.current;
+        if (!canvas || images.length === 0) return false;
+
+        const rect = canvas.getBoundingClientRect();
+        const currentImg = images[currentIndex];
+        const currentSet = currentImg.annotationSets[currentAnnotationSetIndex];
+        if (!currentSet) return false;
+
+        const { original_width: originalWidth, original_height: originalHeight } = currentImg;
+        if (!originalWidth || !originalHeight) return false;
+
+        const aspectRatio = originalWidth / originalHeight;
+        let drawWidth, drawHeight;
+        if (aspectRatio > (SINGLE_MODE_CANVAS_WIDTH / SINGLE_MODE_CANVAS_HEIGHT)) {
+            drawWidth = SINGLE_MODE_CANVAS_WIDTH;
+            drawHeight = drawWidth / aspectRatio;
+        } else {
+            drawHeight = SINGLE_MODE_CANVAS_HEIGHT;
+            drawWidth = drawHeight * aspectRatio;
+        }
+        const offsetX = (SINGLE_MODE_CANVAS_WIDTH - drawWidth) / 2;
+        const offsetY = (SINGLE_MODE_CANVAS_HEIGHT - drawHeight) / 2;
+        const scaleX = drawWidth / originalWidth;
+        const scaleY = drawHeight / originalHeight;
+
+        const canvasClickX = (e.clientX - rect.left) * (SINGLE_MODE_CANVAS_WIDTH / rect.width);
+        const canvasClickY = (e.clientY - rect.top) * (SINGLE_MODE_CANVAS_HEIGHT / rect.height);
+
+        let boxDeleted = false;
+        const updatedBoxes = currentSet.boxes.filter(box => {
+            if (boxDeleted) return true; // Keep remaining boxes after one is deleted
+            const scaledX = offsetX + box.x * scaleX;
+            const scaledY = offsetY + box.y * scaleY;
+            const scaledW = box.w * scaleX;
+            const deleteButtonSize = 15;
+            if (canvasClickX >= (scaledX + scaledW - deleteButtonSize) && canvasClickX <= (scaledX + scaledW) &&
+                canvasClickY >= scaledY && canvasClickY <= (scaledY + deleteButtonSize)) {
+                boxDeleted = true;
+                return false; // Filter out this box
+            }
+            return true;
+        });
+
+        if (boxDeleted) {
+            setImages(prev => {
+                const updated = [...prev];
+                const imageToUpdate = updated[currentIndex];
+                imageToUpdate.annotationSets[currentAnnotationSetIndex].boxes = updatedBoxes;
+                triggerAutosave(imageToUpdate, currentAnnotationSetIndex);
+                return updated;
+            });
+        }
+        return boxDeleted;
+    }, [images, currentIndex, currentAnnotationSetIndex, triggerAutosave]);
+
 
     const handleSingleMouseDown = (e) => {
         if (e.button !== 0) return;
+        if (deleteAnnotation(e)) return;
         setIsDrawing(true);
         setStartPt(getOriginalCoordsSingle(e));
     };
