@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 
 // --- CONFIGURATION & CONSTANTS ---
-const BASE_URL = "http://127.0.0.1:5000";
+const BASE_URL = "http://127.0.0.1:5001";
 const SINGLE_MODE_CANVAS_WIDTH = 1400; 
 const SINGLE_MODE_CANVAS_HEIGHT = 1400;
 const MULTIPLE_MODE_CANVAS_WIDTH = 700;
@@ -419,12 +419,97 @@ function ImageFilter() {
     };
 
     const handleSingleMouseUp = (e) => {
-        if (!isDrawing || !startPt) return;
+        // Exit if not drawing or if the starting point is not set.
+        if (!isDrawing || !startPt) {
+            setIsDrawing(false);
+            setStartPt(null);
+            return;
+        }
+
+        // Reset drawing state and get the end point coordinates
         setIsDrawing(false);
         const endPt = getOriginalCoordsSingle(e);
-        if (!endPt) { setStartPt(null); return; }
+        if (!endPt) {
+            setStartPt(null);
+            return;
+        }
+
+        const drawnWidth = Math.abs(startPt.x - endPt.x);
+        const drawnHeight = Math.abs(startPt.y - endPt.y);
+
+        // --- DELETION LOGIC ---
+        // If the mouse moved only a tiny bit, treat it as a click for deletion.
+        if (drawnWidth < 5 && drawnHeight < 5) {
+            const canvas = singleCanvasRef.current;
+            const rect = canvas.getBoundingClientRect();
+            // Get click coordinates relative to the canvas element
+            const canvasClickX = (e.clientX - rect.left) * (SINGLE_MODE_CANVAS_WIDTH / rect.width);
+            const canvasClickY = (e.clientY - rect.top) * (SINGLE_MODE_CANVAS_HEIGHT / rect.height);
+
+            const img = images[currentIndex];
+            const { original_width: originalWidth, original_height: originalHeight } = img;
+            if (!originalWidth || !originalHeight) return;
+
+            // Recalculate image scaling and offset to find the exact box positions on canvas
+            // This logic MUST match drawSingleCanvasContent
+            const aspectRatio = originalWidth / originalHeight;
+            let drawWidth, drawHeight;
+            if (aspectRatio > (SINGLE_MODE_CANVAS_WIDTH / SINGLE_MODE_CANVAS_HEIGHT)) {
+                drawWidth = SINGLE_MODE_CANVAS_WIDTH;
+                drawHeight = drawWidth / aspectRatio;
+            } else {
+                drawHeight = SINGLE_MODE_CANVAS_HEIGHT;
+                drawWidth = drawHeight * aspectRatio;
+            }
+            const offsetX = (SINGLE_MODE_CANVAS_WIDTH - drawWidth) / 2;
+            const offsetY = (SINGLE_MODE_CANVAS_HEIGHT - drawHeight) / 2;
+            const scaleX = drawWidth / originalWidth;
+            const scaleY = drawHeight / originalHeight;
+
+            let boxWasDeleted = false;
+            const currentBoxes = [...images[currentIndex].boxes]; // Make a copy
+
+            // Iterate backwards to safely remove items
+            for (let i = currentBoxes.length - 1; i >= 0; i--) {
+                const box = currentBoxes[i];
+                const scaledX = offsetX + box.x * scaleX;
+                const scaledY = offsetY + box.y * scaleY;
+                const scaledW = box.w * scaleX;
+                
+                // Define the small 15x15 delete button area
+                const deleteArea = {
+                    x: scaledX + scaledW - 15,
+                    y: scaledY,
+                    w: 15,
+                    h: 15
+                };
+
+                // Check if the click was inside the delete button
+                if (canvasClickX >= deleteArea.x && canvasClickX <= deleteArea.x + deleteArea.w &&
+                    canvasClickY >= deleteArea.y && canvasClickY <= deleteArea.y + deleteArea.h) {
+                    currentBoxes.splice(i, 1); // Remove the box from the array
+                    boxWasDeleted = true;
+                    break; // Stop after deleting one box
+                }
+            }
+
+            if (boxWasDeleted) {
+                saveStateForUndo(currentBoxes);
+                setImages(prev => {
+                    const updated = [...prev];
+                    updated[currentIndex] = { ...updated[currentIndex], boxes: currentBoxes };
+                    triggerAutosave(updated[currentIndex]);
+                    return updated;
+                });
+            }
+            setStartPt(null);
+            return; // IMPORTANT: Exit here to prevent creating a new tiny box
+        }
+
+        // --- CREATION LOGIC ---
+        // If it was a drag, create a new box.
         let [x1, y1, x2, y2] = [startPt.x, startPt.y, endPt.x, endPt.y];
-        const newBox = { classId: currentClassId, x: Math.min(x1, x2), y: Math.min(y1, y2), w: Math.abs(x1 - x2), h: Math.abs(y1 - y2) };
+        const newBox = { classId: currentClassId, x: Math.min(x1, x2), y: Math.min(y1, y2), w: drawnWidth, h: drawnHeight };
         if (newBox.w > 2 && newBox.h > 2) {
             const updatedBoxes = [...images[currentIndex].boxes, newBox];
             saveStateForUndo(updatedBoxes);
